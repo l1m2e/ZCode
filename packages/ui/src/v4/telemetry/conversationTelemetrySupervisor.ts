@@ -4,6 +4,8 @@ import {
   type ConversationTelemetryObservation,
 } from "@zcode/shared/conversation-telemetry";
 export * from "@zcode/shared/conversation-telemetry";
+import type { ConversationTelemetryFact } from "@zcode/shared/zcode-protocol-v4";
+import { noteConversationFactForSessionStats } from "@/v4/sessionStatsStore.js";
 import { reportAppTelemetryEvent } from "@/lib/appTelemetry.js";
 import {
   reportChatErrorBannerTelemetry,
@@ -75,6 +77,13 @@ export class ConversationTelemetrySupervisor extends ConversationTelemetryEngine
         reportAppTelemetryEvent(options.platform, payload, "v4-conversation-telemetry"),
     });
     this.uiPlatform = options.platform;
+  }
+
+  // 会话统计芯片：所有进入遥测的事实（含后台 subagent，按 sessionId 分账）先归账再交给引擎。
+  // 重复事实过滤由 sessionStatsStore 自行负责（去重口径与引擎 handleFact 相同）。
+  override handleFact(fact: ConversationTelemetryFact): void {
+    noteConversationFactForSessionStats(fact);
+    super.handleFact(fact);
   }
 
   reportVisibleChatError(params: {
