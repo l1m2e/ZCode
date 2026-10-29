@@ -12,19 +12,20 @@ const MAX_BASH_TIMEOUT_MS = 600_000;
 const TRUE_BOOLEAN_STRINGS = new Set(["true", "1", "yes", "y", "on"]);
 const FALSE_BOOLEAN_STRINGS = new Set(["false", "0", "no", "n", "off"]);
 const BASH_DESCRIPTION_FIELD_PROMPT = [
-  'Clear, concise description of what this command does in active voice. Never use words like "complex" or "risk" in the description - just describe what it does.',
+  "用简短的中文描述这条命令做什么（主动语态，一般 5-15 个字）。",
+  '不要出现"复杂""风险"之类的评价词，只描述命令本身做什么。',
   "",
-  "Say what the command does in plain words: do not echo the command's text, its flags, or file paths - the user reads this description, often without seeing the command.",
+  "用平实的语言说明命令做什么：不要照抄命令原文、参数或文件路径——用户读到的是描述，往往看不到命令本身。",
   "",
-  "For simple commands (git, npm, standard CLI tools), keep it brief (5-10 words):",
-  '- ls → "List files in current directory"',
-  '- git status → "Show working tree status"',
-  '- npm install → "Install package dependencies"',
+  "简单命令保持精简：",
+  '- ls → "列出当前目录的文件"',
+  '- git status → "查看工作区状态"',
+  '- npm install → "安装项目依赖"',
   "",
-  "For commands that are harder to parse at a glance (piped commands, obscure flags, etc.), add enough context to clarify what it does:",
-  '- find . -name "*.tmp" -exec rm {} \\; → "Find and delete all .tmp files recursively"',
-  '- git reset --hard origin/main → "Discard all local changes and match remote main"',
-  "- curl -s url | jq '.data[]' → \"Fetch JSON from URL and extract data array elements\"",
+  "管道、冷门参数等不易一眼看懂的命令，补充说明它的目的：",
+  '- find . -name "*.tmp" -exec rm {} \\; → "递归查找并删除所有 .tmp 文件"',
+  '- git reset --hard origin/main → "丢弃全部本地改动并重置到远程 main"',
+  "- curl -s url | jq '.data[]' → \"请求 URL 并提取 JSON 数组元素\"",
 ].join("\n");
 
 // -----------------------------------------------
@@ -43,19 +44,18 @@ export const BashInputSchema = z
         `Optional timeout in milliseconds (max ${MAX_BASH_TIMEOUT_MS} for a foreground command)`,
       ),
     /**
-     * Clear, concise description of what this command does in active voice.
-     * Never use words like "complex" or "risk" in the description - just describe what it does.
+     * 用简短的中文描述这条命令做什么（主动语态，一般 5-15 个字）。
+     * 不要出现"复杂""风险"之类的评价词，只描述命令本身做什么。
      *
-     * For simple commands (git, npm, standard CLI tools), keep it brief (5-10 words):
-     * - ls → "List files in current directory"
-     * - git status → "Show working tree status"
-     * - npm install → "Install package dependencies"
+     * 简单命令保持精简：
+     * - ls → "列出当前目录的文件"
+     * - git status → "查看工作区状态"
+     * - npm install → "安装项目依赖"
      *
-     * For commands that are harder to parse at a glance (piped commands, obscure flags, etc.),
-     * add enough context to clarify what it does:
-     * - find . -name "*.tmp" -exec rm {} \; → "Find and delete all .tmp files recursively"
-     * - git reset --hard origin/main → "Discard all local changes and match remote main"
-     * - curl -s url | jq '.data[]' → "Fetch JSON from URL and extract data array elements"
+     * 管道、冷门参数等不易一眼看懂的命令，补充说明它的目的：
+     * - find . -name "*.tmp" -exec rm {} \; → "递归查找并删除所有 .tmp 文件"
+     * - git reset --hard origin/main → "丢弃全部本地改动并重置到远程 main"
+     * - curl -s url | jq '.data[]' → "请求 URL 并提取 JSON 数组元素"
      */
     description: z.string().optional().describe(BASH_DESCRIPTION_FIELD_PROMPT),
     /**
