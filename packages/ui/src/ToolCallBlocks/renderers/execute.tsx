@@ -42,6 +42,13 @@ export function getExecuteSecondaryText(input: unknown): string | undefined {
   }
 
   const record = input as Record<string, unknown>;
+  // 收起态摘要优先展示模型给出的 description（本仓库的 Bash 工具提示词要求简短中文），
+  // 原始命令仍在展开详情和悬停提示里，不丢可读性。
+  const described = readFirstStringField(record, ["description"]);
+  if (described) {
+    return described;
+  }
+
   const parsedCommand = record.parsed_cmd;
   if (Array.isArray(parsedCommand)) {
     for (const item of parsedCommand) {
