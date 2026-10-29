@@ -1511,3 +1511,9 @@ exceptions:
     paths:
       - packages/zcode-cua/src/**
     reason: The whole zcode-cua producer package (broker, native adapters, tools) entered the repo after the gate timestamp as pre-existing code moved from a separate repository; adopting its internal layers needs a dedicated CONTRACT pass (it has known internal cycles by design), not a mechanical split in this branch.
+  - id: session-stats-unmanaged-new-files
+    rule: unmanaged-new-file
+    paths:
+      - packages/ui/src/v4/sessionStatsStore.ts
+      - packages/ui/src/v4/SessionStatsBadges.tsx
+    reason: Locally maintained dsh-style session stats chips superseding the t/s badge; they only consume existing conversation facts and snapshot usage, registering a module boundary needs a separate refactor.
