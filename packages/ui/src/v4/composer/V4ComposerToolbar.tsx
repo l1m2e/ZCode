@@ -40,7 +40,6 @@ import type {
 } from "@zcode/shared/zcode-protocol-v4";
 import { ModelConfigSelect, type ModelSelectGroup } from "@/ModelConfigSelect.js";
 import type { ComposerModelOptions } from "@/chat-input-toolbar/ComposerModelMenu.js";
-import { useSessionTokensPerSecond } from "@/v4/tokensPerSecondStore.js";
 import { Button } from "@/components/ui/button.js";
 import { HighspeedModelIndicator } from "@/highspeed/HighspeedModelIndicator.js";
 import { formatHighspeedRemainingTime } from "@/highspeed/highspeedTime.js";
@@ -168,23 +167,6 @@ function HighspeedCountdown({ expiresAt }: { expiresAt: number }) {
       >
         <span className="absolute left-0 top-0.5">{remainingTime}</span>
       </span>
-    </span>
-  );
-}
-
-/** 会话平均生成速度徽章：权威 usage 口径、每轮更新，完成后常驻显示在圆环旁。 */
-function TokensPerSecondBadge({ sessionId }: { sessionId: string | null }) {
-  const { tokensPerSecond, roundCount } = useSessionTokensPerSecond(sessionId);
-  if (sessionId === null || tokensPerSecond === null || roundCount === 0) {
-    return null;
-  }
-  return (
-    <span
-      className="shrink-0 text-ui-xs tabular-nums text-foreground-subtle"
-      data-testid="chat-toolbar-tokens-per-second"
-      title={`会话平均生成速度 · ${roundCount} 轮 · 权威 usage 口径`}
-    >
-      {tokensPerSecond.toFixed(1)} t/s
     </span>
   );
 }
@@ -466,7 +448,6 @@ function V4ComposerModelControlsImpl({
   modelSelectionState = MODEL_SELECTION_LOADING_STATE,
   modelSelectionReload,
   modelSelectionRefresh,
-  sessionId,
   provider,
   isWebRemoteControl = false,
   isMobileViewport = false,
@@ -1305,7 +1286,6 @@ function V4ComposerModelControlsImpl({
         data-usage-max={usage?.contextWindow?.maxTokens ?? ""}
         className="hidden"
       />
-      <TokensPerSecondBadge sessionId={sessionId} />
       {/* Highspeed 卡激活即锁定模型；不能等动效交接完成才隐藏，否则 usage 圈圈会短暂闪现。 */}
       {!modelLocked ? (
         <ChatContextUsage

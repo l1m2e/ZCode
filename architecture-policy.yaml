@@ -2339,3 +2339,9 @@ exceptions:
     paths:
       - packages/ui/src/root/GlobalDatabaseStartupLoading.tsx
     reason: 启动失败页在现有复制诊断/重试/退出旁增加导出日志按钮（docs/desktop/database-migration-startup-gate-plan.md）。只扩展既有失败页交互，不新增文件、不改变启动状态 owner 或模块边界；接管 packages/ui/src/root 不在本次范围内。
+  - id: session-stats-unmanaged-new-files
+    rule: unmanaged-new-file
+    paths:
+      - packages/ui/src/v4/sessionStatsStore.ts
+      - packages/ui/src/v4/SessionStatsBadges.tsx
+    reason: Locally maintained dsh-style session stats chips superseding the t/s badge; they only consume existing conversation facts and snapshot usage, registering a module boundary needs a separate refactor.

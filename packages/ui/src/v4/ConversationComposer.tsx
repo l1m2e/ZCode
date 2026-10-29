@@ -220,6 +220,7 @@ import {
   type ModelSelectionSource,
 } from "@/v4/composer/V4ComposerToolbar.js";
 import { ComposerStatusSlot } from "@/extension-slots/index.js";
+import { SessionStatsBadges } from "@/v4/SessionStatsBadges.js";
 import {
   resolveV4ComposerConfigPickerState,
   type V4ComposerConfigPicker,
@@ -3074,6 +3075,13 @@ function ConversationComposerImpl({
           </p>
         ) : null}
       </div>
+      {layout === "stacked" && (sessionId || composerUsage) ? (
+        // dsh 风格统计芯片：零高行，文字画进 composer dock 原有 pb-4 底部空隙，
+        // 不增加输入区整体高度；官方 context 圆环与模型选区仍在工具条原位。
+        <div className="flex h-0 w-full shrink-0 items-start justify-center gap-3 overflow-visible pt-1">
+          <SessionStatsBadges sessionId={sessionId} usage={composerUsage} />
+        </div>
+      ) : null}
       <ImagePreviewDialog
         initialIndex={attachmentPreviewIndex}
         items={composerMediaPreviewItems}
