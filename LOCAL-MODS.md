@@ -18,6 +18,19 @@ git rebase main               # 个人修改重放到最新官方之上；冲突
 pnpm typecheck && pnpm lint && pnpm architecture:check --changed
 ```
 
+## 编译并替换本地安装的 Preview 版
+
+```bash
+# 必须带 PREVIEW 身份（app id dev.zcode.app.preview），否则会打包成
+# ZCode.app 并与官方安装的 /Applications/ZCode.app 冲突。
+ZCODE_ENV=production ZCODE_PREVIEW_IDENTITY=1 pnpm --filter @zcode/desktop build
+ZCODE_ENV=production ZCODE_PREVIEW_IDENTITY=1 pnpm --filter @zcode/desktop bundle
+
+# 替换 /Applications 里的自编译版（先退出正在运行的 ZCode Preview）
+rm -rf "/Applications/ZCode Preview.app"
+ditto "packages/desktop/dist/mac-arm64/ZCode Preview.app" "/Applications/ZCode Preview.app"
+```
+
 ## 当前个人提交清单
 
 | 提交 | 内容 |
