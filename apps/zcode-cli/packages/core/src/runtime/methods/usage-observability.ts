@@ -390,6 +390,8 @@ function firstModelTokenAt(
   return undefined;
 }
 
+export { firstModelTokenAt };
+
 function errorInfoFor(
   error: unknown,
   failedNetworkEvent: { reason?: string; retryable?: boolean; message?: string } | undefined,

@@ -1013,6 +1013,8 @@ describe("订阅与帧调度", () => {
           content: "done",
           stopReason: "stop",
           querySource: "main_turn",
+          // CLI 权威首包时间随 usage.delta 下发，供 renderer 会话统计做解码分母。
+          firstTokenAt: 1_700_000_000_000,
           usage: {
             inputTokens: 10,
             outputTokens: 4,
@@ -1029,6 +1031,7 @@ describe("订阅与帧调度", () => {
         kind: "usage.delta",
         totalTokens: 14,
         reasoningTokens: 3,
+        firstTokenAt: 1_700_000_000_000,
       }),
     ]);
   });

@@ -862,6 +862,8 @@ export interface ModelCompletePayload {
   contextUsageBreakdown?: ContextUsageBreakdownItem[];
   contextWindow?: number;
   fileChanges?: TurnFileChangeSummary;
+  /** 本步首个 text/reasoning delta 事件的 epoch ms；旧事件或纯工具调用步可能缺失。 */
+  firstTokenAt?: number;
   querySource?: string;
   stopReason: string;
   /** 当前模型请求组装出的完整 tool call 数量；旧事件可能缺失。 */
