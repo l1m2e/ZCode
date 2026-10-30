@@ -8,22 +8,31 @@
 - `personal-mods`：全部个人修改都提交到这里，基于最新 `main` 重放。
 - 历史残留分支 `feat/session-tokens-per-second`、`backup/session-tokens-per-second` 是旧版徽章的迭代备份，已被 personal-mods 取代，可随时删除。
 
-## 全自动同步（2026-10-30 起）
+## 应用内「更新」按钮：与官方一致的自编译更新链路（2026-10-30 起）
 
-`scripts/sync-personal-mods.sh`（仅存在于 personal-mods 分支）+ launchd 定时任务
-`dev.zcode.personal-mods-sync`（`~/Library/LaunchAgents/`，每 4 小时触发）自动完成：
-fetch 官方 → main fast-forward → rebase personal-mods → install/typecheck/lint/architecture
-→ 构建 → 替换 `/Applications/ZCode Preview.app`（运行中会先退出-替换-重启）。
-任一步失败弹系统通知并停在安全状态；日志在 `~/.cache/personal-mods-sync.log`。
+不再用 launchd 定时任务。检查/构建/安装全部由**运行中的 app** 驱动，节奏与官方更新器一致：
 
-- `SYNC_INSTALL=0`：只构建不替换（验证流水线，不打断运行中的 app）。
-- `RESTART_RUNNING=0`：应用运行中时跳过替换。
-- fetch 连续 3 次失败（直连 github 抖动，脚本已用 HTTP/1.1 规避 HTTP2 framing layer 错误）
-  会降级用缓存的 `origin/main` 继续跑，弱网下只是可能滞后一轮。
-- 工作区有未提交的**已跟踪文件**改动时跳过本次（保护未提交工作）；脚本本身未提交不影响。
-- 停用定时任务：`launchctl bootout gui/$(id -u)/dev.zcode.personal-mods-sync`。
+1. **检查（15 分钟一次，同官方轮询间隔）**：`packages/desktop/src/main/personalSelfBuiltUpdate.ts`
+   用 `git ls-remote`（HTTP/1.1，廉价 ref 查询）比对官方 GitHub main；**没新提交不触发任何
+   构建与合并**；有新提交才拉起 `scripts/sync-personal-mods.sh`（detached，日志
+   `~/.cache/personal-mods-sync.log`）。
+2. **构建**：脚本 fetch → main fast-forward → rebase personal-mods → install/校验 →
+   构建 dist → 写更新清单 `~/.zcode/v2/personal-mods-update.json` 与构建 ID
+   `$DIST/.personal-build-id`。脚本**不安装**，源码没变时跳过校验与构建。
+3. **点亮**：主进程每轮检查后比对 dist 与已安装 app 的构建 ID，发现新构建即点亮现成的
+   更新胶囊（复用官方更新 UI：胶囊 → 更新日志弹窗 → 「立即重启更新」确认框）。
+4. **安装**：点击确认 → 拉起 `sync-personal-mods.sh --install-only`（等待 app 退出 →
+   ditto 替换 → 自动重启）。
 
-rebase 冲突仍需人工解（脚本会自动中止并通知）；解完 `git rebase --continue` 后重跑脚本即可。
+自编译标识：关于面板 applicationVersion 显示「（自编译）」；更新弹窗顶部说明
+「本包为自编译版本（personal-mods 分支）」。官方待装更新日志与构建同版本时会复用其内容。
+
+- `--install-only`：按钮专用安装模式（等待退出 → 替换 → 重启）。
+- 工作区有未提交的**已跟踪文件**改动时脚本跳过本次（保护未提交工作）。
+- 官方检查失败（网络/GitHub 不可达）静默跳过本轮，不做任何合并。
+
+rebase 冲突仍需人工解（脚本会自动中止并通知）；解完 `git rebase --continue` 后等下一轮
+检查或在 app 内重试即可。
 
 ## 手动同步官方代码的流程（备用）
 
