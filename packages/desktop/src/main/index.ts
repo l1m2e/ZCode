@@ -116,6 +116,7 @@ import {
   syncPostUpdateReleaseNotesToWindow,
   syncReadyUpdateToWindow,
 } from "./autoUpdater.js";
+import { initSelfBuiltUpdateSupport } from "./personalSelfBuiltUpdate.js";
 import { BroadcastHub } from "./broadcastHub.js";
 import { TaskRealtimeBus } from "./taskRealtimeBus.js";
 import { createAppLaunchGate } from "./appLaunchGate.js";
@@ -2409,6 +2410,15 @@ app.whenReady().then(async () => {
       argv: process.argv,
       env: process.env,
     }),
+  });
+
+  // personal-mods：自编译构建无真更新器，把流水线构建产物作为更新源点亮现成更新 UI
+  void initSelfBuiltUpdateSupport({
+    settingService: mainSettingService,
+    prepareQuit: async () => {
+      notifyStabilityLifecycle("update_install");
+      await prepareAppQuit("self-built quitAndInstall", "update-install");
+    },
   });
 
   if (process.platform === "darwin" || process.platform === "win32") {
