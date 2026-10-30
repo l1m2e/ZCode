@@ -1,10 +1,10 @@
 #!/bin/bash
-# personal-mods 专用（见 LOCAL-MODS.md）：同步官方代码并重编译替换本地 Preview 安装。
+# personal-mods 专用（见 LOCAL-MODS.md）：同步官方代码并重编译构建产物。
 # 由 launchd 定时触发（dev.zcode.personal-mods-sync）或手动运行。流程：
-#   fetch 官方 → main fast-forward → rebase personal-mods → install/校验 → 构建 → 替换安装。
-# 任一步失败都停在安全状态并弹系统通知，不会留下半安装状态；日志在 ~/.cache/personal-mods-sync.log。
-# SYNC_INSTALL=0    只构建不替换（验证流水线，不打断正在运行的 app）。
-# RESTART_RUNNING=0 应用运行中时跳过替换（默认会退出-替换-重启运行中的 app）。
+#   fetch 官方 → main fast-forward → rebase personal-mods → install/校验 → 构建 → 写更新清单。
+# 本脚本不安装：构建完成后在 app 内点「更新」按钮安装（personalSelfBuiltUpdate 模块
+# 拉起本脚本 --install-only 完成退出-替换-重启）。任一步失败弹系统通知并停在安全状态；
+# 日志在 ~/.cache/personal-mods-sync.log。
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
@@ -30,6 +30,28 @@ fail() {
 
 echo "=== $(date '+%F %T') start ==="
 
+# --install-only：由 app 内「更新」按钮触发。app 正在退出，等待退出后替换并重启
+if [ "${1:-}" = "--install-only" ]; then
+  wait_seconds="${PERSONAL_INSTALL_WAIT_MS:-90000}"
+  wait_seconds=$((wait_seconds / 1000))
+  for _ in $(seq 1 "$wait_seconds"); do
+    pgrep -f "ZCode Preview" >/dev/null || break
+    sleep 1
+  done
+  if pgrep -f "ZCode Preview" >/dev/null; then
+    fail "应用未能退出，未替换（install-only）"
+  fi
+  if [ ! -d "$DIST" ]; then
+    fail "构建产物缺失：$DIST"
+  fi
+  rm -rf "$APP"
+  ditto "$DIST" "$APP"
+  echo "installed (install-only) $(date '+%F %T')"
+  open "$APP"
+  notify "自编译更新已安装并重启"
+  exit 0
+fi
+
 if ! git diff --quiet || ! git diff --cached --quiet; then
   echo "dirty worktree, skip"
   notify "工作区有未提交改动，跳过本次"
@@ -52,10 +74,11 @@ if [ "$fetch_ok" != "1" ]; then
 fi
 
 remote_main=$(git rev-parse origin/main)
-# 已是最新且已安装的 app 不旧于待装构建才早退；dist 更新（延迟安装场景）则继续走安装
+# 已是最新且已安装的构建就是当前产物（ditto 保留 mtime，比较构建 ID 而非时间）
 if [ "$(git rev-parse main)" = "$remote_main" ] &&
   [ "$(git merge-base main personal-mods)" = "$remote_main" ] &&
-  [ "$APP" -nt "$DIST" ] 2>/dev/null; then
+  [ -f "$DIST/.personal-build-id" ] &&
+  cmp -s "$DIST/.personal-build-id" "$APP/.personal-build-id"; then
   echo "up to date, exit"
   exit 0
 fi
@@ -71,47 +94,28 @@ fi
 
 pnpm install --frozen-lockfile || fail "pnpm install 失败，未安装更新"
 
-pnpm typecheck || fail "typecheck 未通过，未安装更新"
-pnpm lint || fail "lint 未通过，未安装更新"
-pnpm architecture:check --changed || fail "architecture check 未通过，未安装更新"
+# 源码自上次构建后未变（dist 比最新提交还新）时跳过校验与构建，直接走安装
+if [ -d "$DIST" ] &&
+  [ "$(stat -f %m "$DIST")" -ge "$(git log -1 --format=%ct)" ]; then
+  echo "dist newer than HEAD, skip validate+build"
+else
+  pnpm typecheck || fail "typecheck 未通过，未安装更新"
+  pnpm lint || fail "lint 未通过，未安装更新"
+  pnpm architecture:check --changed || fail "architecture check 未通过，未安装更新"
 
-env "${BUILD_ENV[@]}" pnpm --filter @zcode/desktop build ||
-  fail "desktop build 失败，未安装更新"
-env "${BUILD_ENV[@]}" pnpm --filter @zcode/desktop bundle ||
-  fail "desktop bundle 失败，未安装更新"
+  env "${BUILD_ENV[@]}" pnpm --filter @zcode/desktop build ||
+    fail "desktop build 失败，未安装更新"
+  env "${BUILD_ENV[@]}" pnpm --filter @zcode/desktop bundle ||
+    fail "desktop bundle 失败，未安装更新"
 
-if [ ! -d "$DIST" ]; then
-  fail "构建产物缺失：$DIST"
+  # 写自编译更新清单与构建 ID：app 内「更新」按钮据此点亮（personalSelfBuiltUpdate 模块消费）
+  mkdir -p "$HOME/.zcode/v2"
+  dist_version=$(defaults read "$PWD/$DIST/Contents/Info.plist" CFBundleShortVersionString)
+  printf '%s\n' "${dist_version}-$(date -u +%Y%m%d%H%M%S)" > "$DIST/.personal-build-id"
+  printf '{\n  "version": "%s",\n  "distPath": "%s",\n  "scriptPath": "%s",\n  "repoPath": "%s",\n  "builtAt": "%s"\n}\n' \
+    "$dist_version" "$PWD/$DIST" "$PWD/scripts/sync-personal-mods.sh" "$PWD" "$(date -u +%FT%TZ)" \
+    > "$HOME/.zcode/v2/personal-mods-update.json"
 fi
 
-if [ "${SYNC_INSTALL:-1}" = "0" ]; then
-  echo "SYNC_INSTALL=0, skip install"
-  notify "同步构建完成（未替换安装）"
-  exit 0
-fi
-
-reopen=0
-if pgrep -f "ZCode Preview.app/Contents/MacOS" >/dev/null; then
-  if [ "${RESTART_RUNNING:-1}" = "0" ]; then
-    echo "app running, skip install (RESTART_RUNNING=0)"
-    notify "应用运行中，已构建待替换（本次跳过）"
-    exit 0
-  fi
-  osascript -e 'quit app "ZCode Preview"' || true
-  for _ in $(seq 1 30); do
-    pgrep -f "ZCode Preview.app/Contents/MacOS" >/dev/null || break
-    sleep 1
-  done
-  if pgrep -f "ZCode Preview.app/Contents/MacOS" >/dev/null; then
-    fail "应用未能退出，本次未替换"
-  fi
-  reopen=1
-fi
-
-rm -rf "$APP"
-ditto "$DIST" "$APP"
-echo "installed $(date '+%F %T')"
-if [ "$reopen" = "1" ]; then
-  open "$APP"
-fi
-notify "已同步官方更新并替换 Preview"
+notify "同步构建完成，可在应用内点「更新」安装"
+echo "done $(date '+%F %T')"
