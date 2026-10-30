@@ -60,7 +60,12 @@ function streamChunk(sessionId: string, occurredAt: number, firstChunk = false):
   return fact({ kind: "stream.chunk", sessionId, occurredAt, channel: "text", chunkLength: 8, firstChunk });
 }
 
-function usageDelta(sessionId: string, occurredAt: number, outputTokens: number): ConversationTelemetryFact {
+function usageDelta(
+  sessionId: string,
+  occurredAt: number,
+  outputTokens: number,
+  firstTokenAt?: number,
+): ConversationTelemetryFact {
   return fact({
     kind: "usage.delta",
     sessionId,
@@ -71,6 +76,7 @@ function usageDelta(sessionId: string, occurredAt: number, outputTokens: number)
     reasoningTokens: 0,
     cacheReadTokens: 800,
     cacheWriteTokens: 0,
+    ...(firstTokenAt !== undefined ? { firstTokenAt } : {}),
   });
 }
 
@@ -131,5 +137,24 @@ describe("sessionStatsStore", () => {
     const { result: b } = renderHook(() => useSessionStats("stats-b"));
     expect(a.current.steps).toBe(1);
     expect(b.current.steps).toBe(0);
+  });
+
+  it("chunk 稀疏时解码分母用 CLI 权威首包时间，TPS 不再虚高", () => {
+    const sessionId = "stats-authoritative";
+    // 真实窗口 10s（首包 2s → 完成 12s），但实时链路上 renderer 只见到末尾一条 chunk：
+    // 旧口径窗口塌缩成 0（被 200ms 门槛丢弃），TPS 会虚高几十倍。
+    noteConversationFactForSessionStats(requestStarted(sessionId, 1_000));
+    noteConversationFactForSessionStats(streamChunk(sessionId, 11_900));
+    noteConversationFactForSessionStats(requestCompleted(sessionId, 12_000, 11_000));
+    noteConversationFactForSessionStats(usageDelta(sessionId, 12_000, 500, 2_000));
+
+    const { result } = renderHook(() => useSessionStats(sessionId));
+    expect(result.current).toMatchObject({
+      steps: 1,
+      outputTokens: 500,
+      // 500 tok ÷ 10s = 50 tok/s，而不是塌缩分母推出的数千 tok/s。
+      tokensPerSecond: 50,
+      ttftMs: 1_000,
+    });
   });
 });

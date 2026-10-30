@@ -186,6 +186,8 @@ const usageDeltaFactSchema = z
     reasoningTokens: z.number().nonnegative(),
     cacheReadTokens: z.number().nonnegative(),
     cacheWriteTokens: z.number().nonnegative(),
+    /** 本步首个 text/reasoning delta 的 epoch ms（CLI 权威口径）；旧事件或纯工具调用步可能缺失。 */
+    firstTokenAt: timestampSchema.optional(),
   })
   .strict();
 
