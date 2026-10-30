@@ -83,6 +83,7 @@ import {
   recordMainTurnModelUsage,
 } from "./turn-model-step-usage.js";
 import { estimateCurrentModelInputTokens } from "./compact.js";
+import { firstModelTokenAt } from "./usage-observability.js";
 import {
   resolveModelStepMaxOutputTokens,
   resolveNormalRequestMaxOutputTokens,
@@ -754,6 +755,7 @@ async function runModelBackedTurnStepImpl(
     supportsTurnFileChanges && toolCalls.length === 0
       ? buildTurnFileChangeSummary(this.currentTurnFileChanges)
       : undefined;
+  const firstTokenAt = firstModelTokenAt(state.events, networkEventStartIndex);
   const modelCompleteEvent = this.createEvent(
     SessionEventType.ModelComplete,
     {
@@ -767,6 +769,9 @@ async function runModelBackedTurnStepImpl(
       querySource,
       stopReason: result.finishReason,
       usage: result.usage,
+      // renderer 会话统计的解码分母用「首包→完成」权威窗口（dsh 同口径），
+      // 不能依赖高频 stream.chunk 事实在实时链路上的到达完整性。
+      ...(firstTokenAt !== undefined ? { firstTokenAt } : {}),
       ...(cacheHit ? { cacheHit } : {}),
       ...(fileChanges ? { fileChanges } : {}),
       ...(querySource === "main_turn" && result.contextUsageBreakdown
