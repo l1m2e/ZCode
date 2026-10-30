@@ -1517,3 +1517,10 @@ exceptions:
       - packages/ui/src/v4/sessionStatsStore.ts
       - packages/ui/src/v4/SessionStatsBadges.tsx
     reason: Locally maintained dsh-style session stats chips superseding the t/s badge; they only consume existing conversation facts and snapshot usage, registering a module boundary needs a separate refactor.
+  - id: self-built-update-personal-files
+    rule: unmanaged-new-file
+    paths:
+      - packages/desktop/src/main/personalSelfBuiltUpdate.ts
+      - packages/desktop/src/main/autoUpdater.ts
+      - packages/desktop/src/main/index.ts
+    reason: Locally maintained self-built update source turns the sync pipeline's dist bundle into an in-app update (reuses the existing update pill/dialog IPC) and marks the app as a self-built build; wiring lives in three precise spots and adopting the whole updater ownership needs a separate refactor.

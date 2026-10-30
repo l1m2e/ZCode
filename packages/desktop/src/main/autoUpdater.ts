@@ -65,7 +65,7 @@ let autoUpdaterSettingService: SettingServiceLike | undefined;
 // 都会对占位 feed 发真实请求。这里记住“本 flavor 已禁用”，让手动检查在模块内部 fail-closed。
 let autoUpdaterDisabledForProductFlavor = false;
 
-type SettingServiceLike = Pick<ISettingService, "get" | "update">;
+export type SettingServiceLike = Pick<ISettingService, "get" | "update">;
 
 type ReleaseNoteInfoLike = {
   note?: string | null;
@@ -1527,6 +1527,40 @@ export function syncReadyUpdateToWindow(win: BrowserWindow) {
 
 export function getAutoUpdaterState(): UpdateStatePayload {
   return menuState;
+}
+
+export function isAutoUpdaterDisabledForProductFlavor(): boolean {
+  return autoUpdaterDisabledForProductFlavor;
+}
+
+/**
+ * 自编译更新源（personal-mods）：把流水线构建产物作为「已下载待装」状态发布，
+ * 复用现成的更新 UI（胶囊/弹窗/确认框）。仅在更新器被编译禁用的 flavor 下由
+ * personalSelfBuiltUpdate 模块调用，避免与 electron-updater 的状态机竞争。
+ */
+export function publishSelfBuiltUpdateReady(
+  version: string,
+  releaseNotes: PostUpdateReleaseNotesPayload | null,
+): void {
+  readyUpdateVersion = version;
+  readyUpdateReleaseNotes = releaseNotes;
+  readyUpdateChannel = availableUpdateChannel;
+  readyUpdateRestoredFromPendingReleaseNotes = false;
+  setAutoUpdaterMenuState(buildUpdateDownloadedState(version));
+  for (const win of BrowserWindow.getAllWindows()) {
+    syncReadyUpdateToWindow(win);
+  }
+}
+
+/** 已安装版本追上构建产物（或产物消失）时收起自编译更新状态。 */
+export function clearSelfBuiltUpdateReadyState(): void {
+  if (menuState.kind !== "update-downloaded" || !isReadyUpdateCurrentTarget()) {
+    return;
+  }
+  clearReadyUpdateState();
+  clearAvailableUpdateState();
+  clearDownloadingUpdateState();
+  setAutoUpdaterMenuState({ kind: "idle", enabled: true });
 }
 
 export function refreshAutoUpdaterReleaseChannel(
