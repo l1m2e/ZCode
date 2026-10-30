@@ -10,8 +10,10 @@ import type { ConversationTelemetryFact } from "@zcode/shared/zcode-protocol-v4"
  * - 步：usage.delta 次数，即主轮 / subagent / workflow_child 的模型请求完成数；
  * - 模型用时：model.request.status completed 的 durationMs 之和（同一来源白名单）；
  * - 工具调用用时：tool.lifecycle completed/failed 的 durationMs 之和；
- * - 首 token 平均：每步 model_request_started → 本步首个 stream.chunk 间隔的均值；
- * - 输出速度：累计 outputTokens ÷ 每步「首包→末包」时长之和（权威 usage 口径，同旧 store）。
+ * - 首 token 平均：每步 model_request_started → 首包的间隔均值（优先 CLI 权威 firstTokenAt）；
+ * - 输出速度：累计 outputTokens ÷ 每步解码时长之和；解码窗口优先用 CLI 权威
+ *   「firstTokenAt → usage.delta occurredAt」，stream.chunk 首尾差只作旧事件回退，
+ *   因为高频 chunk 事实在实时链路上到达不完整会把窗口压塌、TPS 虚高几十倍。
  *
  * in-flight 步不参与计算；短于 MIN_ROUND_MS 的流视为噪声丢弃。
  * 数据只覆盖本 renderer 存活期间收到的事实（旧 t/s store 同限），恢复历史会话不回填。
@@ -161,7 +163,12 @@ function noteStreamChunk(stat: SessionStatState, occurredAt: number): void {
   stat.lastChunkAt = occurredAt;
 }
 
-function settleRound(stat: SessionStatState, outputTokens: number): void {
+function settleRound(
+  stat: SessionStatState,
+  outputTokens: number,
+  firstTokenAt?: number,
+  completedAt?: number,
+): void {
   const runStartAt = stat.runStartAt;
   const lastChunkAt = stat.lastChunkAt;
   stat.runStartAt = null;
@@ -171,15 +178,23 @@ function settleRound(stat: SessionStatState, outputTokens: number): void {
   stat.roundRequestStartAt = null;
   stat.steps += 1;
   stat.outputTokens += outputTokens;
-  if (runStartAt === null || lastChunkAt === null) {
-    return;
+  // 解码分母优先用 CLI 权威「首包→完成」窗口（dsh 同口径）：stream.chunk 事实是高频
+  // 旁路信号，实时链路上到达不完整时窗口会塌缩，TPS 被放大几十倍。chunk 累计只在
+  // 旧事件缺失 firstTokenAt 时回退使用。
+  let decodeWindowMs: number | null = null;
+  let ttftEndAt: number | null = null;
+  if (firstTokenAt !== undefined && completedAt !== undefined && completedAt >= firstTokenAt) {
+    decodeWindowMs = completedAt - firstTokenAt;
+    ttftEndAt = firstTokenAt;
+  } else if (runStartAt !== null && lastChunkAt !== null) {
+    decodeWindowMs = lastChunkAt - runStartAt;
+    ttftEndAt = runStartAt;
   }
-  const roundMs = lastChunkAt - runStartAt;
-  if (outputTokens > 0 && roundMs >= MIN_ROUND_MS) {
-    stat.decodeMs += roundMs;
+  if (decodeWindowMs !== null && outputTokens > 0 && decodeWindowMs >= MIN_ROUND_MS) {
+    stat.decodeMs += decodeWindowMs;
   }
-  if (roundRequestStartAt !== null) {
-    stat.ttftMs += Math.max(0, runStartAt - roundRequestStartAt);
+  if (ttftEndAt !== null && roundRequestStartAt !== null) {
+    stat.ttftMs += Math.max(0, ttftEndAt - roundRequestStartAt);
     stat.ttftSteps += 1;
   }
 }
@@ -217,7 +232,7 @@ export function noteConversationFactForSessionStats(fact: ConversationTelemetryF
       }
       break;
     case "usage.delta":
-      settleRound(stat, fact.outputTokens);
+      settleRound(stat, fact.outputTokens, fact.firstTokenAt, fact.occurredAt);
       break;
     default:
       break;
