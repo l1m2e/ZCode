@@ -37,6 +37,7 @@ ditto "packages/desktop/dist/mac-arm64/ZCode Preview.app" "/Applications/ZCode P
 | --- | --- |
 | `a78d281e` | composer 工具条会话平均 tokens/s 徽章（已被 471ed0e9 取代其 UI 形态，store 逻辑并入新模块） |
 | `0b743ea5` | 终端工具调用摘要显示简短中文描述（bash 工具 description 提示词中文化 + execute 渲染器适配） |
+| `7759a721` | 子代理终端摘要强制简体中文：工具级描述 + 字段提示词双重声明「与对话语言无关」，修复子代理跟随任务语言输出英文；顺带补齐 tool-contracts 测试断言 |
 | `471ed0e9` | dsh 风格会话统计芯片：输入框正下方居中零高行（轮/步/TPS + Token 用量/缓存命中，悬浮面板），数据来自会话事实归账（sessionStatsStore）与 usage.cumulative |
 
 ## 新增文件与架构豁免
