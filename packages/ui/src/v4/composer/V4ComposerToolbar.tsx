@@ -446,6 +446,7 @@ function V4ComposerModelControlsImpl({
   modelSelectionState = MODEL_SELECTION_LOADING_STATE,
   modelSelectionReload,
   modelSelectionRefresh,
+  sessionId,
   provider,
   isWebRemoteControl = false,
   isMobileViewport = false,
