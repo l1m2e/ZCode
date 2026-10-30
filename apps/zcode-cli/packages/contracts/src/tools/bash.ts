@@ -11,8 +11,12 @@ import { ToolExecutionTelemetrySchema } from "./performance.js";
 const MAX_BASH_TIMEOUT_MS = 600_000;
 const TRUE_BOOLEAN_STRINGS = new Set(["true", "1", "yes", "y", "on"]);
 const FALSE_BOOLEAN_STRINGS = new Set(["false", "0", "no", "n", "off"]);
+// 修复原因：子代理（Explore/general-purpose）的终端摘要时中时英——模型会跟随任务提示词的
+// 语言写 description，仅靠字段提示词里"用中文"一句不够。因此显式声明与对话语言无关，
+// 并在工具级描述（bash-prompt.ts）里重复同一约束，双信号保证遵循。
 const BASH_DESCRIPTION_FIELD_PROMPT = [
-  "用简短的中文描述这条命令做什么（主动语态，一般 5-15 个字）。",
+  "用简短的简体中文描述这条命令做什么（主动语态，一般 5-15 个字）。",
+  "无论对话、任务提示或系统提示用什么语言，description 一律写简体中文，不要输出英文。",
   '不要出现"复杂""风险"之类的评价词，只描述命令本身做什么。',
   "",
   "用平实的语言说明命令做什么：不要照抄命令原文、参数或文件路径——用户读到的是描述，往往看不到命令本身。",
@@ -44,7 +48,8 @@ export const BashInputSchema = z
         `Optional timeout in milliseconds (max ${MAX_BASH_TIMEOUT_MS} for a foreground command)`,
       ),
     /**
-     * 用简短的中文描述这条命令做什么（主动语态，一般 5-15 个字）。
+     * 用简短的简体中文描述这条命令做什么（主动语态，一般 5-15 个字）。
+     * 无论对话、任务提示或系统提示用什么语言，description 一律写简体中文，不要输出英文。
      * 不要出现"复杂""风险"之类的评价词，只描述命令本身做什么。
      *
      * 简单命令保持精简：
