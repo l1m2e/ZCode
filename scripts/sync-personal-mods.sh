@@ -6,7 +6,9 @@
 # 拉起本脚本 --install-only 完成退出-替换-重启）。任一步失败弹系统通知并停在安全状态；
 # 日志在 ~/.cache/personal-mods-sync.log。
 set -euo pipefail
-cd "$(git rev-parse --show-toplevel)"
+# 仓库根从脚本自身位置推导：按钮触发的安装器继承 app 的 cwd（不在本仓库），
+# git rev-parse 会解析到别的仓库导致「构建产物缺失」
+cd "$(dirname "$0")/.."
 
 APP="/Applications/ZCode Preview.app"
 DIST="packages/desktop/dist/mac-arm64/ZCode Preview.app"
@@ -42,7 +44,7 @@ if [ "${1:-}" = "--install-only" ]; then
     fail "应用未能退出，未替换（install-only）"
   fi
   if [ ! -d "$DIST" ]; then
-    fail "构建产物缺失：$DIST"
+    fail "构建产物缺失：$PWD/$DIST"
   fi
   rm -rf "$APP"
   ditto "$DIST" "$APP"
