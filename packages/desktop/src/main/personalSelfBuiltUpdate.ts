@@ -21,7 +21,7 @@ import { logger } from "./logger.js";
 const MANIFEST_PATH = join(app.getPath("home"), ".zcode", "v2", "personal-mods-update.json");
 // 与官方 autoUpdater 的 AUTO_UPDATE_POLL_INTERVAL_MS 同口径：15 分钟检查一次
 const OFFICIAL_SYNC_POLL_INTERVAL_MS = 15 * 60 * 1000;
-const INSTALLER_WAIT_MS = 90 * 1000;
+const INSTALLER_WAIT_MS = 300 * 1000;
 
 interface PersonalUpdateManifest {
   version: string;
@@ -219,8 +219,17 @@ export function initSelfBuiltUpdateSupport(options: InitSelfBuiltUpdateOptions):
   // electron-updater 禁用时这些 IPC handler 不会注册，这里按同一通道接自编译安装流程
   const install = async (rejectUnavailable: boolean): Promise<void> => {
     const manifest = await readManifest();
-    if (!manifest) {
-      const message = "没有可安装的自编译更新包（未找到构建产物清单）";
+    // 退出前先验证构建产物在位，避免 app 退出后安装器才发现无事可装
+    const distReady = manifest
+      ? await fs
+          .stat(join(manifest.distPath, ".personal-build-id"))
+          .then(() => true)
+          .catch(() => false)
+      : false;
+    if (!manifest || !distReady) {
+      const message = manifest
+        ? `构建产物缺失：${manifest.distPath}（先运行 sync-personal-mods.sh 重新构建）`
+        : "没有可安装的自编译更新包（未找到构建产物清单）";
       logger.warn(`[self-built-update] install aborted: ${message}`);
       if (rejectUnavailable) throw new Error(message);
       return;
