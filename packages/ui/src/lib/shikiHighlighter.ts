@@ -1,6 +1,7 @@
 import type { BundledLanguage, BundledTheme, HighlighterGeneric, ThemedToken } from "shiki";
 import { bundledLanguages, bundledLanguagesInfo, createHighlighter } from "shiki";
 import { logger } from "@/logger.js";
+import { VUE_COMPANION_LANGUAGES } from "@/lib/diffsHighlighterEngine.js";
 import { uiMemoryDiagnosticsRegistry } from "@/lib/memoryDiagnostics.js";
 
 export interface TokenizedCode {
@@ -98,9 +99,9 @@ const getHighlighter = (
   }
 
   const highlighterPromise = createHighlighter({
-    // vue 语法对 <script lang="jsx"> 用外部 scope 引用（source.js.jsx），需同时加载
-    // jsx 才能解析；lang="ts" 的脚本块是内联规则，不受影响
-    langs: language === "vue" ? ["vue", "jsx"] : [language],
+    // vue 语法对 script jsx/tsx、style scss/less 区块用外部 scope 引用，需同时加载
+    // 伴生语法才能解析；lang="ts" 的脚本块是内联规则，不受影响
+    langs: language === "vue" ? ["vue", ...VUE_COMPANION_LANGUAGES] : [language],
     themes: [theme],
   });
 
