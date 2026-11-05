@@ -24,11 +24,22 @@
 4. **安装**：点击确认 → 拉起 `sync-personal-mods.sh --install-only`（等待 app 退出 →
    ditto 替换 → 自动重启）。
 
-自编译标识：关于面板 applicationVersion 显示「（自编译）」；更新弹窗顶部说明
-「本包为自编译版本（personal-mods 分支）」。官方待装更新日志与构建同版本时会复用其内容。
+自编译标识：关于面板 applicationVersion 显示「（自编译 p<N>，p<N> 为个人构建序号）」；
+更新弹窗顶部说明「本包为自编译版本（personal-mods 分支）」。
 
-更新弹窗内容：以上一版构建 ID 的时间戳为起点，`git log` 检出仓库生成「本次个人修改」
-提交清单（官方待装日志存在时附在其后；git 失败或无提交时退回固定说明文案）。
+构建元数据（`write_build_metadata`，流水线构建路径与手动 `--record` 共用同一条写入路径）：
+- 构建 ID `<version>-p<N>-<UTC 时间戳>` 写入 dist app 内 `.personal-build-id`，N 为
+  `~/.zcode/v2/personal-mods-builds.jsonl` 的行数 +1。
+- 更新清单 `~/.zcode/v2/personal-mods-update.json` 额外带 `buildId`。
+- 历史文件 `personal-mods-builds.jsonl` 每次构建追加一条：官方基线（`git rev-parse main`）
+  + 个人补丁栈主题（`git log main..HEAD --pretty=%s`，主题跨 rebase 稳定）。
+
+更新弹窗按真实区间组装（点亮的比对逻辑在 personalSelfBuiltUpdate）：
+- 官方基线不同 → 列 `installedBase..currentBase` 官方提交（「官方更新」段）；
+- 个人补丁栈按主题集合差 → 只列新增的个人提交（「个人修改」段）；
+- 只有官方只显示官方，只有个人只显示个人，两者都有合并显示（官方在前）；
+- 历史缺失（旧格式构建升级）退回时间戳 `git log` / 官方待装日志；都没有退回固定文案。
+- 手动 bundle 后运行 `scripts/sync-personal-mods.sh --record` 补写元数据（不 fetch/构建）。
 
 - `--install-only`：按钮专用安装模式（等待退出 → 替换 → 重启）。
 - 工作区有未提交的**已跟踪文件**改动时脚本跳过本次（保护未提交工作）。

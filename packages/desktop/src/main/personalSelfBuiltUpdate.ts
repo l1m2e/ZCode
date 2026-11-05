@@ -19,6 +19,9 @@ import { logger } from "./logger.js";
 // 拉起脚本 --install-only（等待 app 退出 → ditto 替换 → 重启），与官方更新体验一致。
 
 const MANIFEST_PATH = join(app.getPath("home"), ".zcode", "v2", "personal-mods-update.json");
+// 每次构建追加一条（sync-personal-mods.sh 的 write_build_metadata），记录该次构建的
+// 官方基线与个人补丁栈主题；更新弹窗据此计算「官方更新 / 个人修改」两个区间
+const BUILDS_HISTORY_PATH = join(app.getPath("home"), ".zcode", "v2", "personal-mods-builds.jsonl");
 // 与官方 autoUpdater 的 AUTO_UPDATE_POLL_INTERVAL_MS 同口径：15 分钟检查一次
 const OFFICIAL_SYNC_POLL_INTERVAL_MS = 15 * 60 * 1000;
 const INSTALLER_WAIT_MS = 300 * 1000;
@@ -28,6 +31,15 @@ interface PersonalUpdateManifest {
   distPath: string;
   scriptPath: string;
   repoPath?: string;
+  buildId?: string;
+}
+
+/** personal-mods-builds.jsonl 的单行记录。 */
+interface PersonalBuildHistoryEntry {
+  buildId: string;
+  officialBase?: string;
+  /** 该次构建包含的个人补丁栈主题（main..HEAD），跨 rebase 稳定，用于集合差 */
+  personal?: string[];
 }
 
 interface InitSelfBuiltUpdateOptions {
@@ -65,7 +77,31 @@ async function readManifest(): Promise<PersonalUpdateManifest | null> {
       version: parsed.version.trim(),
       distPath: parsed.distPath.trim(),
       scriptPath: parsed.scriptPath.trim(),
+      repoPath: typeof parsed.repoPath === "string" && parsed.repoPath.trim() ? parsed.repoPath.trim() : undefined,
+      buildId: typeof parsed.buildId === "string" && parsed.buildId.trim() ? parsed.buildId.trim() : undefined,
     };
+  } catch {
+    return null;
+  }
+}
+
+async function readBuildHistoryEntry(buildId: string): Promise<PersonalBuildHistoryEntry | null> {
+  try {
+    const raw = await fs.readFile(BUILDS_HISTORY_PATH, "utf8");
+    for (const line of raw.split("\n")) {
+      if (!line.includes(`"buildId":"${buildId}"`)) continue;
+      const parsed = JSON.parse(line) as Partial<PersonalBuildHistoryEntry>;
+      if (typeof parsed.buildId === "string" && parsed.buildId === buildId) {
+        return {
+          buildId: parsed.buildId,
+          officialBase: typeof parsed.officialBase === "string" ? parsed.officialBase : undefined,
+          personal: Array.isArray(parsed.personal)
+            ? parsed.personal.filter((subject): subject is string => typeof subject === "string")
+            : undefined,
+        };
+      }
+    }
+    return null;
   } catch {
     return null;
   }
@@ -109,7 +145,7 @@ function fallbackNotes(version: string): PostUpdateReleaseNotesPayload {
   };
 }
 
-/** 构建 ID 形如 3.17.2-20261105033248，尾部是 UTC 时间戳；还原成 git 可解析的 ISO 时刻。 */
+/** 构建 ID 形如 3.17.2-p7-20261105033248，尾部是 UTC 时间戳；还原成 git 可解析的 ISO 时刻。 */
 function installedBuildIdToSince(buildId: string): string | null {
   const raw = buildId.slice(buildId.lastIndexOf("-") + 1);
   const match = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/.exec(raw);
@@ -117,12 +153,18 @@ function installedBuildIdToSince(buildId: string): string | null {
   return `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}Z`;
 }
 
+/** 从构建 ID 提取个人构建序号（p<N>），旧格式 ID 无序号返回 null。 */
+function buildNumberLabel(buildId: string | null | undefined): string | null {
+  if (!buildId) return null;
+  const match = /-p(\d+)-/.exec(buildId);
+  return match ? `p${match[1]}` : null;
+}
+
 /**
- * 更新弹窗展示本次构建真实包含的个人提交：以上一版构建 ID 的时间戳为起点
- * git log 检出仓库（流水线与手动构建都在 personal-mods 工作区进行）。rebase
- * 会改写提交时间为 rebase 时刻，官方同步后老提交可能重复出现一次，可接受。
+ * 旧格式构建 ID（无历史记录）的兜底：以已装构建的时间戳为起点 git log 检出仓库。
+ * rebase 会改写提交时间为 rebase 时刻，官方同步后老提交可能重复出现一次，可接受。
  */
-async function readPersonalCommits(
+async function readPersonalCommitsSince(
   repoPath: string | undefined,
   installedBuildId: string | null,
 ): Promise<{ hash: string; subject: string }[] | null> {
@@ -147,32 +189,91 @@ async function readPersonalCommits(
   return commits.length > 0 ? commits : null;
 }
 
+/**
+ * 更新弹窗按真实区间组装：官方基线不同 → 列官方提交；个人补丁栈主题集合差 → 列个人新提交。
+ * 只有官方就只显示官方，只有个人就只显示个人，两者都有就合并（官方在前）。
+ * 历史记录缺失（旧格式构建升级到本版）时退回时间戳 git log / 官方待装日志。
+ */
 async function buildSelfBuiltNotes(
   settingService: SettingServiceLike,
   manifest: PersonalUpdateManifest,
   installedBuildId: string | null,
 ): Promise<PostUpdateReleaseNotesPayload> {
-  const [officialNotes, commits] = await Promise.all([
-    readOfficialPendingNotes(settingService, manifest.version),
-    readPersonalCommits(manifest.repoPath, installedBuildId),
-  ]);
-  if (!officialNotes && !commits) {
-    return fallbackNotes(manifest.version);
-  }
+  const current = manifest.buildId ? await readBuildHistoryEntry(manifest.buildId) : null;
+  const installed = installedBuildId ? await readBuildHistoryEntry(installedBuildId) : null;
+
   const sections: string[] = [];
-  if (officialNotes) {
-    sections.push(officialNotes.markdown);
+  let officialNotes: PostUpdateReleaseNotesPayload | null = null;
+
+  if (current?.officialBase && installed?.officialBase) {
+    if (current.officialBase !== installed.officialBase) {
+      const out = await execFileText(
+        "git",
+        [
+          "log",
+          "--no-merges",
+          `${installed.officialBase}..${current.officialBase}`,
+          "--pretty=format:%h%x1f%s",
+          "-n",
+          "30",
+        ],
+        manifest.repoPath,
+      );
+      const lines = out
+        ? out
+            .split("\n")
+            .filter((line) => line !== "")
+            .map((line) => {
+              const separator = line.indexOf("\x1f");
+              return separator === -1
+                ? `- ${line}`
+                : `- \`${line.slice(0, separator)}\` ${line.slice(separator + 1)}`;
+            })
+        : [];
+      if (lines.length > 0) {
+        sections.push(`**官方更新（${lines.length} 条）：**\n\n${lines.join("\n")}`);
+      } else {
+        sections.push(
+          `官方代码更新：\`${installed.officialBase.slice(0, 7)}\` → \`${current.officialBase.slice(0, 7)}\``,
+        );
+      }
+    }
+  } else {
+    // 缺历史记录：可能是官方同步升级（旧格式 ID），复用官方待装日志
+    officialNotes = await readOfficialPendingNotes(settingService, manifest.version);
+    if (officialNotes) {
+      sections.push(officialNotes.markdown);
+    }
   }
-  if (commits) {
+
+  const installedSubjects = new Set(installed?.personal ?? []);
+  const newPersonalSubjects = current?.personal?.filter(
+    (subject) => !installedSubjects.has(subject),
+  );
+  if (newPersonalSubjects && newPersonalSubjects.length > 0) {
     sections.push(
-      `**本次个人修改（${commits.length} 条）：**\n\n${commits
-        .map((commit) => `- \`${commit.hash}\` ${commit.subject}`)
+      `**个人修改（${newPersonalSubjects.length} 条）：**\n\n${newPersonalSubjects
+        .map((subject) => `- ${subject}`)
         .join("\n")}`,
     );
+  } else if (!current && installedBuildId) {
+    const commits = await readPersonalCommitsSince(manifest.repoPath, installedBuildId);
+    if (commits) {
+      sections.push(
+        `**个人修改（${commits.length} 条）：**\n\n${commits
+          .map((commit) => `- \`${commit.hash}\` ${commit.subject}`)
+          .join("\n")}`,
+      );
+    }
   }
+
+  if (sections.length === 0) {
+    return fallbackNotes(manifest.version);
+  }
+  const buildNumber = buildNumberLabel(manifest.buildId);
   return {
     version: manifest.version,
-    title: officialNotes?.title ?? `v${manifest.version} 自编译更新`,
+    title: officialNotes?.title ?? `v${manifest.version}${buildNumber ? `-${buildNumber}` : ""}`,
     markdown: sections.join("\n\n"),
   };
 }
@@ -282,6 +383,15 @@ export function initSelfBuiltUpdateSupport(options: InitSelfBuiltUpdateOptions):
   app.setAboutPanelOptions({
     applicationVersion: `${app.getVersion()}（自编译）`,
     credits: "自编译版本：personal-mods 分支构建，含个人修改。",
+  });
+  // 构建 ID 带 p<N> 序号时（新格式），关于面板补显个人构建号
+  void readBuildId(installedAppPath()).then((installedId) => {
+    const buildNumber = buildNumberLabel(installedId);
+    if (!buildNumber) return;
+    app.setAboutPanelOptions({
+      applicationVersion: `${app.getVersion()}（自编译 ${buildNumber}）`,
+      credits: "自编译版本：personal-mods 分支构建，含个人修改。",
+    });
   });
 
   // electron-updater 禁用时这些 IPC handler 不会注册，这里按同一通道接自编译安装流程
