@@ -83,7 +83,9 @@ jobs:
 
       - name: Install dependencies
         if: steps.guard.outputs.skip != 'true'
-        run: pnpm install --frozen-lockfile
+        # 已知 flake：macOS 上 esbuild postinstall 与 pnpm 临时目录 rename 竞态
+        # （ERR_PNPM_ENOENT _tmp_... -> esbuild），失败重试一次即可命中缓存完成
+        run: pnpm install --frozen-lockfile || pnpm install --frozen-lockfile
 
       - name: Validate
         if: steps.guard.outputs.skip != 'true'
