@@ -76,11 +76,14 @@ jobs:
           # rebase 后回推远端分支，保证远端与已发布构建一一对应
           git push --force-with-lease=personal-mods origin personal-mods
 
+      - uses: pnpm/action-setup@v4
+        if: steps.guard.outputs.skip != 'true'
+        with:
+          version: 10.33.2
+
       - name: Install dependencies
         if: steps.guard.outputs.skip != 'true'
-        run: |
-          corepack enable
-          pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Validate
         if: steps.guard.outputs.skip != 'true'
