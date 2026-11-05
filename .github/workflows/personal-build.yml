@@ -13,6 +13,14 @@ on:
   workflow_dispatch:
   push:
     branches: [personal-mods]
+    # 纯文档/流水线改动不值得烧 20 分钟 mac runner；只有业务代码变更才构建。
+    # schedule 不受 paths 影响，仍由守卫步骤负责「官方没动就秒退」。
+    paths:
+      - "packages/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "mise.toml"
 
 permissions:
   contents: write
