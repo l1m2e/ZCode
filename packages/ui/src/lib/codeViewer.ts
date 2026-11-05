@@ -143,6 +143,7 @@ const EXTENSION_TO_LANGUAGE: Record<string, BundledLanguage> = {
   ts: "typescript",
   tsx: "tsx",
   txt: "log",
+  vue: "vue",
   xml: "xml",
   yaml: "yaml",
   yml: "yaml",
