@@ -25,7 +25,9 @@ dmg_path=$(ls -t packages/desktop/dist/ZCode\ Preview-*-mac-arm64.dmg | head -1 
 
 version=$(node -p "JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')).version" "$UPDATE_MANIFEST")
 build_id=$(cat "$DIST/.personal-build-id")
-tag="$build_id"
+# tag 必须以 personal- 开头：构建序号 p<N> 靠统计 personal-* tag 数生成，
+# 前缀丢了计数器就永远不涨
+tag="personal-$build_id"
 zip_name=$(basename "$zip_path")
 zip_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/${zip_name}"
 sha256=$(shasum -a 256 "$zip_path" | cut -d' ' -f1)
