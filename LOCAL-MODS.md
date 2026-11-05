@@ -65,7 +65,7 @@ fork 仓库（公开）+ `personal-mods` 设为默认分支后，`.github/workfl
 
 1. **触发**：schedule 15 分钟（守卫：官方没动且 HEAD 已发布则秒退）/ push personal-mods / 手动 dispatch。concurrency 串行化。
 2. **流程**：rebase 到官方 main（CI 会 force-push 回远端分支，本地 pull --rebase 跟进）→ 校验 → macos-14 构建 → `--record` 写元数据 → `publish-personal-release.sh` 发 Release。
-3. **产物**：Release = zip/dmg + `personal-update.json`（version/buildId/zipUrl/sha256/officialBase/personal[]）。构建序号 p<N> 以仓库 `personal-*` tag 数为准，本地与 CI 共用同一计数器。
+3. **产物**：Release = zip/dmg + `personal-update.json`（version/buildId/zipUrl/sha256/officialBase/personal[]）。构建序号 p<N> 以仓库 `personal-*` tag 数为准，本地与 CI 共用同一计数器。构建 ID 由 Record 步骤后补注进 zip（dmg 不含，手动装 dmg 的 app 无构建号，走一次远程自动更新即补齐）。
 4. **app 消费**：`personalSelfBuiltUpdate.ts` 的 `PERSONAL_UPDATE_MANIFEST_URL` 填入后，60 秒轮询 `releases/latest/download/personal-update.json`，buildId 序号更新即点亮；点更新走 `sync-personal-mods.sh --install-remote <zipUrl> <sha256>`（下载 → sha256 校验 → 剥 quarantine → 替换重启）。URL 留空 = 远程通道关闭，仅本地构建源。
 5. **注意**：Actions 定时任务在仓库 60 天无活动后自动停用；CI rebase 冲突时 job 失败，按手动同步流程在本地解。
 

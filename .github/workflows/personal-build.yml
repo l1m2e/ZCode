@@ -104,6 +104,15 @@ jobs:
         if: steps.guard.outputs.skip != 'true'
         run: scripts/sync-personal-mods.sh --record
 
+      # .personal-build-id 写入于 bundle 之后，dmg/zip 里天然没有它；补注进 zip
+      # （自动化安装走 zip），否则装出的 app 无法参与构建号比对与防回退
+      - name: Inject build id into zip
+        if: steps.guard.outputs.skip != 'true'
+        run: |
+          cd packages/desktop/dist/mac-arm64
+          zip_path=$(ls -t ZCode*.zip | head -1)
+          zip "$zip_path" "ZCode Preview.app/.personal-build-id"
+
       - name: Publish GitHub Release
         if: steps.guard.outputs.skip != 'true'
         env:
