@@ -46,8 +46,11 @@ write_build_metadata() {
   # 本地远端名叫 fork，CI 里叫 origin，依次尝试；离线时退回本地历史文件行数
   build_number=""
   for remote in fork origin; do
-    build_number=$(git ls-remote --tags "$remote" 'personal-*' 2>/dev/null \
-      | awk '{print $2}' | sed 's/\^\{\}$//' | sort -u | wc -l | tr -d ' ')
+    # CI 上没有 fork 远端，ls-remote 必然失败；pipefail 下必须 || true 兜住，
+    # 否则 set -e 会在第一个不存在的远端上直接终止脚本
+    tags=$(git ls-remote --tags "$remote" 'personal-*' 2>/dev/null || true)
+    # BRE 里 {} 本就是字面量；写 \{\} 在 BSD sed（macOS/CI）会被当区间量词报错
+    build_number=$(printf '%s\n' "$tags" | awk 'NF {print $2}' | sed 's/\^{}$//' | sort -u | wc -l | tr -d ' ')
     [ -n "$build_number" ] && [ "$build_number" != "0" ] && break
     build_number=""
   done
