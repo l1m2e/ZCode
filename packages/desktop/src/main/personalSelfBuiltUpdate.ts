@@ -22,6 +22,11 @@ const MANIFEST_PATH = join(app.getPath("home"), ".zcode", "v2", "personal-mods-u
 // 每次构建追加一条（sync-personal-mods.sh 的 write_build_metadata），记录该次构建的
 // 官方基线与个人补丁栈主题；更新弹窗据此计算「官方更新 / 个人修改」两个区间
 const BUILDS_HISTORY_PATH = join(app.getPath("home"), ".zcode", "v2", "personal-mods-builds.jsonl");
+// CI 发布清单固定地址（GitHub Release latest 直链）。fork 建好后填
+// https://github.com/<user>/<repo>/releases/latest/download/personal-update.json，
+// 留空 = 远程更新通道关闭，仅用本地构建源
+const PERSONAL_UPDATE_MANIFEST_URL = "";
+const REMOTE_CHECK_INTERVAL_MS = 60 * 1000;
 // 与官方 autoUpdater 的 AUTO_UPDATE_POLL_INTERVAL_MS 同口径：15 分钟检查一次
 const OFFICIAL_SYNC_POLL_INTERVAL_MS = 15 * 60 * 1000;
 const INSTALLER_WAIT_MS = 300 * 1000;
@@ -40,6 +45,15 @@ interface PersonalBuildHistoryEntry {
   officialBase?: string;
   /** 该次构建包含的个人补丁栈主题（main..HEAD），跨 rebase 稳定，用于集合差 */
   personal?: string[];
+}
+
+/** CI 发布清单（publish-personal-release.sh 生成，挂在 Release 资产上）。 */
+interface RemoteUpdateManifest extends PersonalBuildHistoryEntry {
+  version?: string;
+  zipUrl?: string;
+  sha256?: string;
+  size?: number;
+  builtAt?: string;
 }
 
 interface InitSelfBuiltUpdateOptions {
@@ -279,6 +293,8 @@ async function buildSelfBuiltNotes(
 }
 
 let publishing = false;
+/** 待安装的远程构建；点亮后由「更新」按钮消费，本地构建源为 null。 */
+let pendingRemoteInstall: RemoteUpdateManifest | null = null;
 
 async function checkAndPublish(options: InitSelfBuiltUpdateOptions): Promise<void> {
   if (publishing) return;
@@ -298,10 +314,66 @@ async function checkAndPublish(options: InitSelfBuiltUpdateOptions): Promise<voi
       clearSelfBuiltUpdateReadyState();
       return;
     }
+    pendingRemoteInstall = null;
     const notes = await buildSelfBuiltNotes(options.settingService, manifest, appBuildId);
     publishSelfBuiltUpdateReady(manifest.version, notes);
   } catch (error) {
     logger.warn("[self-built-update] check failed:", error);
+  } finally {
+    publishing = false;
+  }
+}
+
+/**
+ * 远程更新通道：轮询 CI 发布清单，buildId 比已安装新就点亮。远程构建记录并入
+ * 本地历史文件，分区日志的差集计算与本地构建共用同一份存储。
+ */
+async function checkRemoteUpdate(options: InitSelfBuiltUpdateOptions): Promise<void> {
+  if (!PERSONAL_UPDATE_MANIFEST_URL || publishing) return;
+  publishing = true;
+  try {
+    const response = await fetch(PERSONAL_UPDATE_MANIFEST_URL, {
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) return;
+    const remote = JSON.parse(await response.text()) as Partial<RemoteUpdateManifest>;
+    if (
+      typeof remote.buildId !== "string" ||
+      !remote.buildId.trim() ||
+      typeof remote.zipUrl !== "string" ||
+      !remote.zipUrl.trim() ||
+      typeof remote.sha256 !== "string" ||
+      !remote.sha256.trim()
+    ) {
+      return;
+    }
+    const installedId = await readBuildId(installedAppPath());
+    // 构建序号 p<N> 单调递增；两边都有序号时旧远程构建不再点亮（防回退）
+    const remoteNumber = buildNumberLabel(remote.buildId);
+    const installedNumber = buildNumberLabel(installedId);
+    if (remoteNumber && installedNumber && remoteNumber <= installedNumber) {
+      return;
+    }
+    await fs.appendFile(
+      BUILDS_HISTORY_PATH,
+      `${JSON.stringify({
+        buildId: remote.buildId,
+        officialBase: remote.officialBase,
+        personal: remote.personal,
+      })}\n`,
+    );
+    pendingRemoteInstall = remote as RemoteUpdateManifest;
+    const localManifest = await readManifest();
+    const notes = await buildSelfBuiltNotes(options.settingService, {
+      version: typeof remote.version === "string" && remote.version.trim() ? remote.version.trim() : app.getVersion(),
+      distPath: localManifest?.distPath ?? "",
+      scriptPath: localManifest?.scriptPath ?? "",
+      repoPath: localManifest?.repoPath,
+      buildId: remote.buildId,
+    }, installedId);
+    publishSelfBuiltUpdateReady(notes.version, notes);
+  } catch (error) {
+    logger.warn("[self-built-update] remote check failed:", error);
   } finally {
     publishing = false;
   }
@@ -396,6 +468,26 @@ export function initSelfBuiltUpdateSupport(options: InitSelfBuiltUpdateOptions):
 
   // electron-updater 禁用时这些 IPC handler 不会注册，这里按同一通道接自编译安装流程
   const install = async (rejectUnavailable: boolean): Promise<void> => {
+    if (pendingRemoteInstall) {
+      const remote = pendingRemoteInstall;
+      const localManifest = await readManifest();
+      if (!localManifest?.scriptPath) {
+        const message = "远程安装失败：未找到 sync-personal-mods.sh（本机需保留检出仓库）";
+        logger.warn(`[self-built-update] install aborted: ${message}`);
+        if (rejectUnavailable) throw new Error(message);
+        return;
+      }
+      logger.info(`[self-built-update] install remote version=${remote.version ?? "?"}`);
+      const child = spawn(
+        "/bin/bash",
+        [localManifest.scriptPath, "--install-remote", remote.zipUrl ?? "", remote.sha256 ?? ""],
+        { detached: true, stdio: "ignore", env: { ...process.env, PERSONAL_INSTALL_WAIT_MS: String(INSTALLER_WAIT_MS) } },
+      );
+      child.unref();
+      await options.prepareQuit();
+      app.exit(0);
+      return;
+    }
     const manifest = await readManifest();
     // 退出前先验证构建产物在位，避免 app 退出后安装器才发现无事可装
     const distReady = manifest
@@ -423,6 +515,15 @@ export function initSelfBuiltUpdateSupport(options: InitSelfBuiltUpdateOptions):
   });
 
   void checkAndPublish(options);
+  if (PERSONAL_UPDATE_MANIFEST_URL) {
+    // 远程发布清单很小，60 秒一次的轮询成本可忽略；CI 构建通常 6~10 分钟，
+    // 该节奏足以在发包后一分钟内点亮
+    void checkRemoteUpdate(options);
+    const remoteTimer = setInterval(() => {
+      void checkRemoteUpdate(options);
+    }, REMOTE_CHECK_INTERVAL_MS);
+    remoteTimer.unref?.();
+  }
   const check = async (): Promise<void> => {
     const manifest = await readManifest();
     if (!manifest) return;

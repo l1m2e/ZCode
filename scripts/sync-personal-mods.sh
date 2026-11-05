@@ -42,9 +42,15 @@ write_build_metadata() {
   local history="$HOME/.zcode/v2/personal-mods-builds.jsonl"
   local dist_version build_number build_id official_base built_at
   dist_version=$(defaults read "$PWD/$DIST/Contents/Info.plist" CFBundleShortVersionString)
-  build_number=0
-  if [ -f "$history" ]; then
-    build_number=$(wc -l < "$history" | tr -d ' ')
+  # 构建序号以 GitHub 上的 personal-* tag 数为准（与 CI 发布共用同一计数器）；
+  # 离线时退回本地历史文件行数（可能与远端漂移，联网构建后会自动对齐）
+  build_number=$(git ls-remote --tags origin 'personal-*' 2>/dev/null | wc -l | tr -d ' ') || true
+  if [ -z "$build_number" ] || [ "$build_number" = "0" ]; then
+    if [ -f "$history" ]; then
+      build_number=$(wc -l < "$history" | tr -d ' ')
+    else
+      build_number=0
+    fi
   fi
   build_number=$((build_number + 1))
   build_id="${dist_version}-p${build_number}-$(date -u +%Y%m%d%H%M%S)"
@@ -71,6 +77,19 @@ write_build_metadata() {
 
 echo "=== $(date '+%F %T') start ==="
 
+# 等待运行中的 app 退出（安装前置步骤，--install-only / --install-remote 共用）
+wait_app_exit() {
+  wait_seconds="${PERSONAL_INSTALL_WAIT_MS:-90000}"
+  wait_seconds=$((wait_seconds / 1000))
+  for _ in $(seq 1 "$wait_seconds"); do
+    pgrep -f "ZCode Preview" >/dev/null || break
+    sleep 1
+  done
+  if pgrep -f "ZCode Preview" >/dev/null; then
+    fail "应用未能退出，未替换"
+  fi
+}
+
 # --record：手动 bundle 后补写构建元数据（构建 ID / 更新清单 / 构建历史），
 # 不做 fetch、rebase、校验与构建
 if [ "${1:-}" = "--record" ]; then
@@ -80,17 +99,30 @@ if [ "${1:-}" = "--record" ]; then
   exit 0
 fi
 
+# --install-remote <zipUrl> <sha256>：下载 CI 发布的 zip，校验、剥 quarantine
+# 后替换安装。下载的文件带 com.apple.quarantine xattr，不剥掉 Gatekeeper 会拦截启动
+if [ "${1:-}" = "--install-remote" ]; then
+  zip_url="${2:-}"
+  want_sha="${3:-}"
+  [ -n "$zip_url" ] && [ -n "$want_sha" ] || fail "用法：--install-remote <zipUrl> <sha256>"
+  stage="$(mktemp -d)"
+  curl -fsSL --retry 3 "$zip_url" -o "$stage/build.zip" || fail "下载构建包失败：$zip_url"
+  echo "$want_sha  $stage/build.zip" | shasum -a 256 -c - >/dev/null || fail "sha256 校验失败，已中止安装"
+  ditto -x -k "$stage/build.zip" "$stage/app" || fail "解包失败"
+  xattr -dr com.apple.quarantine "$stage/app" 2>/dev/null || true
+  wait_app_exit
+  rm -rf "$APP"
+  ditto "$stage/app" "$APP"
+  rm -rf "$stage"
+  echo "installed (install-remote) $(date '+%F %T')"
+  open "$APP"
+  notify "自编译更新已安装并重启"
+  exit 0
+fi
+
 # --install-only：由 app 内「更新」按钮触发。app 正在退出，等待退出后替换并重启
 if [ "${1:-}" = "--install-only" ]; then
-  wait_seconds="${PERSONAL_INSTALL_WAIT_MS:-90000}"
-  wait_seconds=$((wait_seconds / 1000))
-  for _ in $(seq 1 "$wait_seconds"); do
-    pgrep -f "ZCode Preview" >/dev/null || break
-    sleep 1
-  done
-  if pgrep -f "ZCode Preview" >/dev/null; then
-    fail "应用未能退出，未替换（install-only）"
-  fi
+  wait_app_exit
   if [ ! -d "$DIST" ]; then
     fail "构建产物缺失：$PWD/$DIST"
   fi
