@@ -109,6 +109,74 @@ function fallbackNotes(version: string): PostUpdateReleaseNotesPayload {
   };
 }
 
+/** 构建 ID 形如 3.17.2-20261105033248，尾部是 UTC 时间戳；还原成 git 可解析的 ISO 时刻。 */
+function installedBuildIdToSince(buildId: string): string | null {
+  const raw = buildId.slice(buildId.lastIndexOf("-") + 1);
+  const match = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/.exec(raw);
+  if (!match) return null;
+  return `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}Z`;
+}
+
+/**
+ * 更新弹窗展示本次构建真实包含的个人提交：以上一版构建 ID 的时间戳为起点
+ * git log 检出仓库（流水线与手动构建都在 personal-mods 工作区进行）。rebase
+ * 会改写提交时间为 rebase 时刻，官方同步后老提交可能重复出现一次，可接受。
+ */
+async function readPersonalCommits(
+  repoPath: string | undefined,
+  installedBuildId: string | null,
+): Promise<{ hash: string; subject: string }[] | null> {
+  if (!repoPath || !installedBuildId) return null;
+  const since = installedBuildIdToSince(installedBuildId);
+  if (!since) return null;
+  const out = await execFileText(
+    "git",
+    ["log", "--no-merges", `--since=${since}`, "--pretty=format:%h%x1f%s", "-n", "30"],
+    repoPath,
+  );
+  if (out === null || out === "") return null;
+  const commits = out
+    .split("\n")
+    .map((line) => {
+      const separator = line.indexOf("\x1f");
+      return separator === -1
+        ? null
+        : { hash: line.slice(0, separator), subject: line.slice(separator + 1) };
+    })
+    .filter((commit): commit is { hash: string; subject: string } => commit !== null);
+  return commits.length > 0 ? commits : null;
+}
+
+async function buildSelfBuiltNotes(
+  settingService: SettingServiceLike,
+  manifest: PersonalUpdateManifest,
+  installedBuildId: string | null,
+): Promise<PostUpdateReleaseNotesPayload> {
+  const [officialNotes, commits] = await Promise.all([
+    readOfficialPendingNotes(settingService, manifest.version),
+    readPersonalCommits(manifest.repoPath, installedBuildId),
+  ]);
+  if (!officialNotes && !commits) {
+    return fallbackNotes(manifest.version);
+  }
+  const sections: string[] = [];
+  if (officialNotes) {
+    sections.push(officialNotes.markdown);
+  }
+  if (commits) {
+    sections.push(
+      `**本次个人修改（${commits.length} 条）：**\n\n${commits
+        .map((commit) => `- \`${commit.hash}\` ${commit.subject}`)
+        .join("\n")}`,
+    );
+  }
+  return {
+    version: manifest.version,
+    title: officialNotes?.title ?? `v${manifest.version} 自编译更新`,
+    markdown: sections.join("\n\n"),
+  };
+}
+
 let publishing = false;
 
 async function checkAndPublish(options: InitSelfBuiltUpdateOptions): Promise<void> {
@@ -129,8 +197,8 @@ async function checkAndPublish(options: InitSelfBuiltUpdateOptions): Promise<voi
       clearSelfBuiltUpdateReadyState();
       return;
     }
-    const officialNotes = await readOfficialPendingNotes(options.settingService, manifest.version);
-    publishSelfBuiltUpdateReady(manifest.version, officialNotes ?? fallbackNotes(manifest.version));
+    const notes = await buildSelfBuiltNotes(options.settingService, manifest, appBuildId);
+    publishSelfBuiltUpdateReady(manifest.version, notes);
   } catch (error) {
     logger.warn("[self-built-update] check failed:", error);
   } finally {
