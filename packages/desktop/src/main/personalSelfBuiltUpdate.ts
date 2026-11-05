@@ -1,6 +1,6 @@
 /* oxlint-disable eslint(max-lines) -- 自编译更新源：文件读取、状态发布与安装器编排共享同一份 manifest 事实，拆开会增加跨模块同步漂移 */
 import { execFile, spawn } from "node:child_process";
-import { promises as fs } from "node:fs";
+import { promises as fs, watch } from "node:fs";
 import { join } from "node:path";
 import { app, ipcMain } from "electron";
 import type { PostUpdateReleaseNotesPayload } from "@zcode/shared";
@@ -256,5 +256,23 @@ export function initSelfBuiltUpdateSupport(options: InitSelfBuiltUpdateOptions):
     void check();
   }, OFFICIAL_SYNC_POLL_INTERVAL_MS);
   timer.unref?.();
+
+  // 本地构建完成即点亮：无论流水线还是手动构建，构建 ID 都先于 manifest 落盘，
+  // 监听 manifest 所在目录（而非文件本身，避免被删除重建后监听失效），
+  // 防抖后只做本地比对（checkAndPublish），不触发官方检查。15 分钟轮询仍保留，
+  // 继续负责官方新提交的发现与流水线拉起。
+  let manifestWatchDebounce: NodeJS.Timeout | undefined;
+  try {
+    watch(join(MANIFEST_PATH, ".."), (_event, filename) => {
+      if (filename !== "personal-mods-update.json") return;
+      clearTimeout(manifestWatchDebounce);
+      manifestWatchDebounce = setTimeout(() => {
+        void checkAndPublish(options);
+      }, 2_000);
+      manifestWatchDebounce.unref?.();
+    });
+  } catch (error) {
+    logger.warn("[self-built-update] manifest watch unavailable, poll remains:", error);
+  }
   logger.info("[self-built-update] initialized", { manifestPath: MANIFEST_PATH });
 }
