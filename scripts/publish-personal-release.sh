@@ -56,10 +56,12 @@ printf '%s\n' "$release_manifest" > "$tmp/personal-update.json"
 notes=$(git log --oneline --no-merges "$(git tag --list 'personal-*' --sort=-creatordate | head -1)..HEAD" 2>/dev/null | head -30)
 [ -n "$notes" ] || notes="personal build $build_id"
 
-gh release create "$tag" "$zip_path" --title "$tag" --notes "$notes"
-gh release upload "$tag" "$tmp/personal-update.json" --clobber
+# fork 仓库里同时存在 origin（fork）与 upstream（官方），gh 默认会解析到上游父仓库；
+# GITHUB_TOKEN 只有 fork 权限，必须显式指定 --repo 避免 403
+gh release create "$tag" "$zip_path" --repo "$GITHUB_REPOSITORY" --title "$tag" --notes "$notes"
+gh release upload "$tag" "$tmp/personal-update.json" --repo "$GITHUB_REPOSITORY" --clobber
 if [ -n "${dmg_path:-}" ]; then
-  gh release upload "$tag" "$dmg_path" --clobber
+  gh release upload "$tag" "$dmg_path" --repo "$GITHUB_REPOSITORY" --clobber
 fi
 rm -rf "$tmp"
 echo "published $tag"
