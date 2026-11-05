@@ -6,7 +6,7 @@
 
 - `main`：始终等于官方 `origin/main`，不放任何本地提交；同步官方代码直接 `git pull`（fast-forward）。
 - `personal-mods`：全部个人修改都提交到这里，基于最新 `main` 重放。
-- 提交信息用中文：更新弹窗「个人修改」与 GitHub Release 说明直接取提交主题展示（2026-11-05 起，既有英文提交已整体重写为中文）。
+- 提交信息用中文：更新弹窗「个人修改」与 GitHub Release 说明直接取提交主题展示。
 - 历史残留分支 `feat/session-tokens-per-second`、`backup/session-tokens-per-second` 是旧版徽章的迭代备份，已被 personal-mods 取代，可随时删除。
 
 ## 应用内「更新」按钮：与官方一致的自编译更新链路（2026-10-30 起）
