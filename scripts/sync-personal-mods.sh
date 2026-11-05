@@ -43,8 +43,18 @@ write_build_metadata() {
   local dist_version build_number build_id official_base built_at
   dist_version=$(defaults read "$PWD/$DIST/Contents/Info.plist" CFBundleShortVersionString)
   # 构建序号以 fork 上的 personal-* tag 数为准（与 CI 发布共用同一计数器）；
-  # 离线时退回本地历史文件行数（可能与远端漂移，联网构建后会自动对齐）
-  build_number=$(git ls-remote --tags fork 'personal-*' 2>/dev/null | wc -l | tr -d ' ') || true
+  # 本地远端名叫 fork，CI 里叫 origin，依次尝试；离线时退回本地历史文件行数
+  build_number=""
+  for remote in fork origin; do
+    build_number=$(git ls-remote --tags "$remote" 'personal-*' 2>/dev/null \
+      | awk '{print $2}' | sed 's/\^\{\}$//' | sort -u | wc -l | tr -d ' ')
+    [ -n "$build_number" ] && [ "$build_number" != "0" ] && break
+    build_number=""
+  done
+  if [ -z "$build_number" ] && [ -f "$history" ]; then
+    build_number=$(wc -l < "$history" | tr -d ' ')
+  fi
+  [ -n "$build_number" ] || build_number=0
   if [ -z "$build_number" ] || [ "$build_number" = "0" ]; then
     if [ -f "$history" ]; then
       build_number=$(wc -l < "$history" | tr -d ' ')
