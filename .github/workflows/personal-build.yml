@@ -1,0 +1,103 @@
+name: personal build
+
+# personal-mods 自动构建发布（见 LOCAL-MODS.md）：
+# - schedule：轮询官方 main，有新提交才 rebase + 构建 + 发 Release
+# - push：personal-mods 有新提交（对话驱动改动）时构建发布
+# - workflow_dispatch：手动触发
+# 产物 = GitHub Release（zip/dmg + personal-update.json 发布清单），
+# app 轮询 /releases/latest/download/personal-update.json 比对 buildId 点亮更新。
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+  push:
+    branches: [personal-mods]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: personal-build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-14
+    env:
+      UPSTREAM_URL: https://github.com/zai-org/ZCode.git
+      ZCODE_ENV: production
+      ZCODE_PREVIEW_IDENTITY: "1"
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: personal-mods
+          fetch-depth: 0
+
+      - name: Guard - skip when nothing new
+        id: guard
+        run: |
+          set -euo pipefail
+          git remote add upstream "$UPSTREAM_URL" || true
+          git fetch upstream main
+          git fetch origin main
+          # 拉取历史 personal-* tag 作为构建序号的事实来源
+          git fetch origin 'refs/tags/personal-*:refs/tags/personal-*' || true
+          official_remote=$(git rev-parse upstream/main)
+          official_base=$(git merge-base origin/main upstream/main)
+          last_released=$(git rev-parse "$(git tag --list 'personal-*' --sort=-creatordate | head -1)" 2>/dev/null || echo none)
+          head_hash=$(git rev-parse HEAD)
+          # 官方没动（fork main 已含官方）且 HEAD 已发过 → 无事可做
+          if [ "$official_base" = "$official_remote" ] && [ "$head_hash" = "$last_released" ]; then
+            echo "nothing new: official unchanged and HEAD already released"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "official_base=$official_base official_remote=$official_remote head=$head_hash last_released=$last_released"
+
+      - uses: actions/setup-node@v4
+        if: steps.guard.outputs.skip != 'true'
+        with:
+          node-version: 24
+
+      - name: Sync - rebase personal-mods onto upstream main
+        if: steps.guard.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          git config user.name "personal-mods-ci"
+          git config user.email "personal-mods-ci@users.noreply.github.com"
+          # 维护本地 main 指向官方最新（write_build_metadata 用它做官方基线）
+          git branch -f main upstream/main
+          git rebase upstream/main
+          # rebase 后回推远端分支，保证远端与已发布构建一一对应
+          git push --force-with-lease=personal-mods origin personal-mods
+
+      - name: Install dependencies
+        if: steps.guard.outputs.skip != 'true'
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+
+      - name: Validate
+        if: steps.guard.outputs.skip != 'true'
+        run: |
+          pnpm typecheck
+          pnpm lint
+          pnpm architecture:check --changed
+
+      - name: Build desktop app
+        if: steps.guard.outputs.skip != 'true'
+        run: |
+          pnpm --filter @zcode/desktop build
+          pnpm --filter @zcode/desktop bundle
+
+      - name: Record build metadata
+        if: steps.guard.outputs.skip != 'true'
+        run: scripts/sync-personal-mods.sh --record
+
+      - name: Publish GitHub Release
+        if: steps.guard.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/publish-personal-release.sh
