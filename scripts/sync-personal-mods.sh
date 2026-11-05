@@ -30,7 +30,55 @@ fail() {
   exit 1
 }
 
+# 写自编译构建元数据（流水线构建路径与手动 --record 共用同一条写入路径）。
+# 构建 ID：<version>-p<N>-<UTC 时间戳>，p<N> 为个人构建序号（历史文件行数 +1）；
+# 同时追加构建历史 JSONL（官方基线 + 个人补丁栈主题），app 内更新弹窗据此
+# 区分「官方更新 / 个人修改」区间（personalSelfBuiltUpdate 模块消费）。
+write_build_metadata() {
+  if [ ! -d "$DIST" ]; then
+    fail "构建产物缺失：$PWD/$DIST"
+  fi
+  mkdir -p "$HOME/.zcode/v2"
+  local history="$HOME/.zcode/v2/personal-mods-builds.jsonl"
+  local dist_version build_number build_id official_base built_at
+  dist_version=$(defaults read "$PWD/$DIST/Contents/Info.plist" CFBundleShortVersionString)
+  build_number=0
+  if [ -f "$history" ]; then
+    build_number=$(wc -l < "$history" | tr -d ' ')
+  fi
+  build_number=$((build_number + 1))
+  build_id="${dist_version}-p${build_number}-$(date -u +%Y%m%d%H%M%S)"
+  official_base=$(git rev-parse main) || fail "无法读取 main 官方基线"
+  built_at=$(date -u +%FT%TZ)
+
+  printf '%s\n' "$build_id" > "$DIST/.personal-build-id"
+  printf '{\n  "version": "%s",\n  "buildId": "%s",\n  "distPath": "%s",\n  "scriptPath": "%s",\n  "repoPath": "%s",\n  "builtAt": "%s"\n}\n' \
+    "$dist_version" "$build_id" "$PWD/$DIST" "$PWD/scripts/sync-personal-mods.sh" "$PWD" "$built_at" \
+    > "$HOME/.zcode/v2/personal-mods-update.json"
+
+  # main..HEAD 的提交主题即个人补丁栈；主题跨 rebase 稳定，可跨构建做集合差
+  local personal_json="" sep="" subject
+  while IFS= read -r subject; do
+    [ -n "$subject" ] || continue
+    subject=${subject//\\/\\\\}
+    subject=${subject//\"/\\\"}
+    personal_json+="${sep}\"${subject}\""
+    sep=", "
+  done < <(git log main..HEAD --pretty=format:%s)
+  printf '{"buildId":"%s","builtAt":"%s","officialBase":"%s","personal":[%s]}\n' \
+    "$build_id" "$built_at" "$official_base" "$personal_json" >> "$history"
+}
+
 echo "=== $(date '+%F %T') start ==="
+
+# --record：手动 bundle 后补写构建元数据（构建 ID / 更新清单 / 构建历史），
+# 不做 fetch、rebase、校验与构建
+if [ "${1:-}" = "--record" ]; then
+  write_build_metadata
+  notify "已记录自编译构建，可在应用内点「更新」安装"
+  echo "recorded $(date '+%F %T')"
+  exit 0
+fi
 
 # --install-only：由 app 内「更新」按钮触发。app 正在退出，等待退出后替换并重启
 if [ "${1:-}" = "--install-only" ]; then
@@ -110,13 +158,7 @@ else
   env "${BUILD_ENV[@]}" pnpm --filter @zcode/desktop bundle ||
     fail "desktop bundle 失败，未安装更新"
 
-  # 写自编译更新清单与构建 ID：app 内「更新」按钮据此点亮（personalSelfBuiltUpdate 模块消费）
-  mkdir -p "$HOME/.zcode/v2"
-  dist_version=$(defaults read "$PWD/$DIST/Contents/Info.plist" CFBundleShortVersionString)
-  printf '%s\n' "${dist_version}-$(date -u +%Y%m%d%H%M%S)" > "$DIST/.personal-build-id"
-  printf '{\n  "version": "%s",\n  "distPath": "%s",\n  "scriptPath": "%s",\n  "repoPath": "%s",\n  "builtAt": "%s"\n}\n' \
-    "$dist_version" "$PWD/$DIST" "$PWD/scripts/sync-personal-mods.sh" "$PWD" "$(date -u +%FT%TZ)" \
-    > "$HOME/.zcode/v2/personal-mods-update.json"
+  write_build_metadata
 fi
 
 notify "同步构建完成，可在应用内点「更新」安装"
