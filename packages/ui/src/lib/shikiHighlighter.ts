@@ -98,7 +98,9 @@ const getHighlighter = (
   }
 
   const highlighterPromise = createHighlighter({
-    langs: [language],
+    // vue 语法对 <script lang="jsx"> 用外部 scope 引用（source.js.jsx），需同时加载
+    // jsx 才能解析；lang="ts" 的脚本块是内联规则，不受影响
+    langs: language === "vue" ? ["vue", "jsx"] : [language],
     themes: [theme],
   });
 
