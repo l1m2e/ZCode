@@ -1,4 +1,5 @@
 import type { HighlighterTypes } from "@pierre/diffs";
+import { preloadHighlighter } from "@pierre/diffs";
 import type { WorkerInitializationRenderOptions } from "@pierre/diffs/react";
 import type { BundledTheme } from "shiki";
 
@@ -11,6 +12,17 @@ import type { BundledTheme } from "shiki";
  * oniguruma WASM 引擎的正则活在 wasm 线性内存里，不占 V8 代码区，且是 TextMate 语法的参考实现。
  */
 export const DIFFS_PREFERRED_HIGHLIGHTER: HighlighterTypes = "shiki-wasm";
+
+// 修复：shiki 4.x 的 vue 语法对 <script lang="jsx"> 用外部 scope 引用（source.js.jsx），
+// 只加载 vue 时该引用解析不到，脚本区几乎不着色。这里在主线程共享高亮器里预载 jsx，
+// vue 语法渲染前必须已 attach；lang="ts" 的脚本块是内联规则，不受影响。
+void preloadHighlighter({
+  langs: ["jsx"],
+  themes: [],
+  preferredHighlighter: DIFFS_PREFERRED_HIGHLIGHTER,
+}).catch(() => {
+  // 预载失败不阻塞渲染，vue 文件会退化为仅模板区着色
+});
 
 export interface DiffsHighlighterThemeSettings {
   lightTheme: BundledTheme;
@@ -32,6 +44,9 @@ export function createDiffsWorkerHighlighterOptions(
     maxLineDiffLength: 1_000,
     tokenizeMaxLineLength: 1_000,
     useTokenTransformer: false,
+    // worker 里解析语言会抛错，语言数据必须由主线程预解析传入；带上 jsx 让
+    // vue 语法的 source.js.jsx scope 引用在 worker 里也能解析
+    langs: ["jsx"],
     preferredHighlighter: DIFFS_PREFERRED_HIGHLIGHTER,
   };
 }
