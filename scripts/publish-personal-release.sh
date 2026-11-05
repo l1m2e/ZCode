@@ -28,8 +28,6 @@ build_id=$(cat "$DIST/.personal-build-id")
 # tag 必须以 personal- 开头：构建序号 p<N> 靠统计 personal-* tag 数生成，
 # 前缀丢了计数器就永远不涨
 tag="personal-$build_id"
-zip_name=$(basename "$zip_path")
-zip_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/${zip_name}"
 sha256=$(shasum -a 256 "$zip_path" | cut -d' ' -f1)
 size=$(stat -f %z "$zip_path")
 built_at=$(node -p "JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')).builtAt" "$UPDATE_MANIFEST")
@@ -37,6 +35,22 @@ built_at=$(node -p "JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'
 # 官方基线 + 个人补丁栈主题：--record 追加的历史尾行就是本次构建的记录
 official_base=$(git rev-parse main)
 personal=$(git log main..HEAD --pretty=%s | jq -R -s -c 'split("\n")|map(select(length>0))')
+
+notes=$(git log --oneline --no-merges "$(git tag --list 'personal-*' --sort=-creatordate | head -1)..HEAD" 2>/dev/null | head -30)
+[ -n "$notes" ] || notes="personal build $build_id"
+
+# fork 仓库里同时存在 origin（fork）与 upstream（官方），gh 默认会解析到上游父仓库；
+# GITHUB_TOKEN 只有 fork 权限，必须显式指定 --repo 避免 403
+gh release create "$tag" "$zip_path" --repo "$GITHUB_REPOSITORY" --title "$tag" --notes "$notes"
+if [ -n "${dmg_path:-}" ]; then
+  gh release upload "$tag" "$dmg_path" --repo "$GITHUB_REPOSITORY" --clobber
+fi
+
+# zipUrl 必须取 Release 资产的真实下载地址：CI 产物文件名的空格会被规范化
+# （如空格变点号），按本地文件名拼 URL 会对不上导致远程安装 404
+sleep 3
+zip_url=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" --jq '[.assets[] | select(.name | endswith(".zip"))][0].browser_download_url')
+[ -n "$zip_url" ] || fail "未查询到 zip 资产下载地址"
 
 release_manifest=$(jq -n \
   --arg version "$version" \
@@ -52,16 +66,6 @@ release_manifest=$(jq -n \
 
 tmp=$(mktemp -d)
 printf '%s\n' "$release_manifest" > "$tmp/personal-update.json"
-
-notes=$(git log --oneline --no-merges "$(git tag --list 'personal-*' --sort=-creatordate | head -1)..HEAD" 2>/dev/null | head -30)
-[ -n "$notes" ] || notes="personal build $build_id"
-
-# fork 仓库里同时存在 origin（fork）与 upstream（官方），gh 默认会解析到上游父仓库；
-# GITHUB_TOKEN 只有 fork 权限，必须显式指定 --repo 避免 403
-gh release create "$tag" "$zip_path" --repo "$GITHUB_REPOSITORY" --title "$tag" --notes "$notes"
 gh release upload "$tag" "$tmp/personal-update.json" --repo "$GITHUB_REPOSITORY" --clobber
-if [ -n "${dmg_path:-}" ]; then
-  gh release upload "$tag" "$dmg_path" --repo "$GITHUB_REPOSITORY" --clobber
-fi
 rm -rf "$tmp"
 echo "published $tag"
