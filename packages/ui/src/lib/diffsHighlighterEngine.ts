@@ -13,11 +13,14 @@ import type { BundledTheme } from "shiki";
  */
 export const DIFFS_PREFERRED_HIGHLIGHTER: HighlighterTypes = "shiki-wasm";
 
-// 修复：shiki 4.x 的 vue 语法对 <script lang="jsx"> 用外部 scope 引用（source.js.jsx），
-// 只加载 vue 时该引用解析不到，脚本区几乎不着色。这里在主线程共享高亮器里预载 jsx，
-// vue 语法渲染前必须已 attach；lang="ts" 的脚本块是内联规则，不受影响。
+// 修复：shiki 4.x 的 vue 语法对 <script lang="jsx"/"tsx"> 与 <style lang="scss"/"less">
+// 用外部 scope 引用（source.js.jsx / source.tsx / source.css.scss / source.css.less），
+// 只加载 vue 时这些引用解析不到，对应区块不着色。这里预载伴生语法，vue 渲染前必须
+// 已 attach；lang="ts" 的脚本块是内联规则，不受影响。coffee/stylus 等冷门区块暂不预载。
+export const VUE_COMPANION_LANGUAGES = ["jsx", "tsx", "scss", "less"] as const;
+
 void preloadHighlighter({
-  langs: ["jsx"],
+  langs: [...VUE_COMPANION_LANGUAGES],
   themes: [],
   preferredHighlighter: DIFFS_PREFERRED_HIGHLIGHTER,
 }).catch(() => {
@@ -44,9 +47,9 @@ export function createDiffsWorkerHighlighterOptions(
     maxLineDiffLength: 1_000,
     tokenizeMaxLineLength: 1_000,
     useTokenTransformer: false,
-    // worker 里解析语言会抛错，语言数据必须由主线程预解析传入；带上 jsx 让
-    // vue 语法的 source.js.jsx scope 引用在 worker 里也能解析
-    langs: ["jsx"],
+    // worker 里解析语言会抛错，语言数据必须由主线程预解析传入；带上伴生语法让
+    // vue 语法的外部 scope 引用在 worker 里也能解析
+    langs: [...VUE_COMPANION_LANGUAGES],
     preferredHighlighter: DIFFS_PREFERRED_HIGHLIGHTER,
   };
 }
