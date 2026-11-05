@@ -13,22 +13,22 @@ import {
 } from "./autoUpdater.js";
 import { logger } from "./logger.js";
 
-// personal-mods 专用：把 sync-personal-mods.sh 的构建产物当作更新源。
-// 流水线每次构建后写 ~/.zcode/v2/personal-mods-update.json（version/distPath/scriptPath），
-// 这里发现 dist 比已安装 app 新时，点亮现成的「更新」胶囊；点击确认后
-// 拉起脚本 --install-only（等待 app 退出 → ditto 替换 → 重启），与官方更新体验一致。
+// personal-mods 专用：CI 发布清单是唯一自动更新源；本地构建产物只服务手动构建。
+// 远程：60 秒轮询 GitHub Release latest 的 personal-update.json，buildId 比已安装新
+// 就点亮现成的「更新」胶囊，确认后拉起 sync-personal-mods.sh --install-remote。
+// 本地：不做启动检查与周期轮询（官方同步构建归 CI schedule 负责），只有自己跑
+// sync-personal-mods.sh 写完 ~/.zcode/v2/personal-mods-update.json 时由 watch 立即
+// 点亮，确认后走 --install-only（等待 app 退出 → ditto 替换 → 重启）。
 
 const MANIFEST_PATH = join(app.getPath("home"), ".zcode", "v2", "personal-mods-update.json");
 // 每次构建追加一条（sync-personal-mods.sh 的 write_build_metadata），记录该次构建的
 // 官方基线与个人补丁栈主题；更新弹窗据此计算「官方更新 / 个人修改」两个区间
 const BUILDS_HISTORY_PATH = join(app.getPath("home"), ".zcode", "v2", "personal-mods-builds.jsonl");
 // CI 发布清单固定地址（GitHub Release latest 直链）。
-// 留空 = 远程更新通道关闭，仅用本地构建源
+// 留空 = 远程更新通道关闭，只剩本地手动构建的 watch 点亮
 const PERSONAL_UPDATE_MANIFEST_URL =
   "https://github.com/l1m2e/ZCode/releases/latest/download/personal-update.json";
 const REMOTE_CHECK_INTERVAL_MS = 60 * 1000;
-// 与官方 autoUpdater 的 AUTO_UPDATE_POLL_INTERVAL_MS 同口径：15 分钟检查一次
-const OFFICIAL_SYNC_POLL_INTERVAL_MS = 15 * 60 * 1000;
 const INSTALLER_WAIT_MS = 300 * 1000;
 
 interface PersonalUpdateManifest {
@@ -172,6 +172,16 @@ function buildNumberLabel(buildId: string | null | undefined): string | null {
   if (!buildId) return null;
   const match = /-p(\d+)-/.exec(buildId);
   return match ? `p${match[1]}` : null;
+}
+
+/**
+ * 构建 ID 排序键：p<N> 序号补零 + 尾部 UTC 时间戳。本地脚本离线兜底按历史行数计数、
+ * CI 按 tag 数计数，两个计数器可能撞出相同序号（如都为 p2），序号相同时以时间戳决胜。
+ * 无序号的旧格式 ID 返回 null，不参与比较。
+ */
+function buildSortKey(buildId: string | null): string | null {
+  const [, num, ts] = /-p(\d+)-(\d{14})$/.exec(buildId ?? "") ?? [];
+  return num && ts ? `${num.padStart(6, "0")}-${ts}` : null;
 }
 
 /**
@@ -348,20 +358,26 @@ async function checkRemoteUpdate(options: InitSelfBuiltUpdateOptions): Promise<v
       return;
     }
     const installedId = await readBuildId(installedAppPath());
-    // 构建序号 p<N> 单调递增；两边都有序号时旧远程构建不再点亮（防回退）
-    const remoteNumber = buildNumberLabel(remote.buildId);
-    const installedNumber = buildNumberLabel(installedId);
-    if (remoteNumber && installedNumber && remoteNumber <= installedNumber) {
+    if (remote.buildId === installedId) return;
+    // 防回退：两边都有序号时，远程排序键（p<N> 补零 + 时间戳）必须严格大于已安装
+    // 才点亮。不能只比序号——本地与 CI 双计数器撞号时（同为 p2），真正更新的远程
+    // 构建会被误判为回退而永远不亮（2026-11-05 实测触发）
+    const remoteKey = buildSortKey(remote.buildId);
+    const installedKey = buildSortKey(installedId);
+    if (remoteKey !== null && installedKey !== null && remoteKey <= installedKey) {
       return;
     }
-    await fs.appendFile(
-      BUILDS_HISTORY_PATH,
-      `${JSON.stringify({
-        buildId: remote.buildId,
-        officialBase: remote.officialBase,
-        personal: remote.personal,
-      })}\n`,
-    );
+    // 60 秒轮询下同一 buildId 只追加一次，避免待装期间历史文件被重复行灌满
+    if (!(await readBuildHistoryEntry(remote.buildId))) {
+      await fs.appendFile(
+        BUILDS_HISTORY_PATH,
+        `${JSON.stringify({
+          buildId: remote.buildId,
+          officialBase: remote.officialBase,
+          personal: remote.personal,
+        })}\n`,
+      );
+    }
     pendingRemoteInstall = remote as RemoteUpdateManifest;
     const localManifest = await readManifest();
     const notes = await buildSelfBuiltNotes(options.settingService, {
@@ -399,50 +415,6 @@ function execFileText(
       resolve(error ? null : String(stdout).trim());
     });
   });
-}
-
-let officialSyncInFlight = false;
-
-/**
- * 对齐官方更新检查语义：由运行中的 app 每 15 分钟检查一次官方 GitHub main，
- * 有新提交才触发同步构建流水线（rebase 个人修改 → 构建 → 点亮更新按钮），
- * 没有新提交不触发任何构建/合并。官方没有更新时这一步只是廉价的 ref 查询。
- */
-async function checkOfficialAndSync(manifest: PersonalUpdateManifest): Promise<void> {
-  if (!manifest.repoPath) return;
-  if (officialSyncInFlight) return;
-  const busy = await execFileText("pgrep", ["-f", "sync-personal-mods\\.sh"]);
-  if (busy) {
-    logger.info("[self-built-update] sync script already running, skip official check");
-    return;
-  }
-  officialSyncInFlight = true;
-  try {
-    const [remote, local] = await Promise.all([
-      execFileText("git", ["-c", "http.version=HTTP/1.1", "ls-remote", "origin", "refs/heads/main"], manifest.repoPath),
-      execFileText("git", ["rev-parse", "main"], manifest.repoPath),
-    ]);
-    if (remote === null || local === null) {
-      logger.warn("[self-built-update] official check failed (network or git), skip");
-      return;
-    }
-    const remoteHash = remote.split("\t")[0] ?? "";
-    if (remoteHash === "" || remoteHash === local) {
-      logger.info("[self-built-update] official up to date, no build triggered");
-      return;
-    }
-    logger.info(
-      `[self-built-update] official main moved (${local.slice(0, 7)} -> ${remoteHash.slice(0, 7)}), trigger sync build`,
-    );
-    const child = spawn("/bin/bash", [manifest.scriptPath], {
-      detached: true,
-      stdio: "ignore",
-      env: process.env,
-    });
-    child.unref();
-  } finally {
-    officialSyncInFlight = false;
-  }
 }
 
 export function initSelfBuiltUpdateSupport(options: InitSelfBuiltUpdateOptions): void {
@@ -514,7 +486,6 @@ export function initSelfBuiltUpdateSupport(options: InitSelfBuiltUpdateOptions):
     void install(false);
   });
 
-  void checkAndPublish(options);
   if (PERSONAL_UPDATE_MANIFEST_URL) {
     // 远程发布清单很小，60 秒一次的轮询成本可忽略；CI 构建通常 6~10 分钟，
     // 该节奏足以在发包后一分钟内点亮
@@ -524,26 +495,10 @@ export function initSelfBuiltUpdateSupport(options: InitSelfBuiltUpdateOptions):
     }, REMOTE_CHECK_INTERVAL_MS);
     remoteTimer.unref?.();
   }
-  const check = async (): Promise<void> => {
-    const manifest = await readManifest();
-    if (!manifest) return;
-    // 远程通道启用后官方同步归 CI schedule 负责，本地不再重复拉起构建，
-    // 避免官方一动双通道各发一版互相覆盖绿标
-    if (!PERSONAL_UPDATE_MANIFEST_URL) {
-      await checkOfficialAndSync(manifest);
-    }
-    await checkAndPublish(options);
-  };
-  void check();
-  const timer = setInterval(() => {
-    void check();
-  }, OFFICIAL_SYNC_POLL_INTERVAL_MS);
-  timer.unref?.();
 
-  // 本地构建完成即点亮：无论流水线还是手动构建，构建 ID 都先于 manifest 落盘，
-  // 监听 manifest 所在目录（而非文件本身，避免被删除重建后监听失效），
-  // 防抖后只做本地比对（checkAndPublish），不触发官方检查。15 分钟轮询仍保留，
-  // 继续负责官方新提交的发现与流水线拉起。
+  // 本地构建源的唯一触发路径：自己跑完构建（构建 ID 先于 manifest 落盘）即点亮，
+  // 无启动检查、无周期轮询，官方同步构建归 CI schedule 负责。监听 manifest 所在
+  // 目录（而非文件本身，避免被删除重建后监听失效），防抖后只做本地比对。
   let manifestWatchDebounce: NodeJS.Timeout | undefined;
   try {
     watch(join(MANIFEST_PATH, ".."), (_event, filename) => {
