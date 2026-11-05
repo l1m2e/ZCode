@@ -29,6 +29,9 @@ jobs:
       ZCODE_ENV: production
       ZCODE_PREVIEW_IDENTITY: "1"
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      # macos-14 runner 只有 7GB 内存，Node 默认堆上限会让 tsc -b 全仓编译直接
+      # SIGABRT（exit 134）；显式放大到接近机器上限
+      NODE_OPTIONS: --max-old-space-size=5120
     steps:
       - uses: actions/checkout@v4
         with:
