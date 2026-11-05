@@ -527,7 +527,11 @@ export function initSelfBuiltUpdateSupport(options: InitSelfBuiltUpdateOptions):
   const check = async (): Promise<void> => {
     const manifest = await readManifest();
     if (!manifest) return;
-    await checkOfficialAndSync(manifest);
+    // 远程通道启用后官方同步归 CI schedule 负责，本地不再重复拉起构建，
+    // 避免官方一动双通道各发一版互相覆盖绿标
+    if (!PERSONAL_UPDATE_MANIFEST_URL) {
+      await checkOfficialAndSync(manifest);
+    }
     await checkAndPublish(options);
   };
   void check();
