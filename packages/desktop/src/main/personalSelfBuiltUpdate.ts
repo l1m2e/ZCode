@@ -22,10 +22,10 @@ const MANIFEST_PATH = join(app.getPath("home"), ".zcode", "v2", "personal-mods-u
 // 每次构建追加一条（sync-personal-mods.sh 的 write_build_metadata），记录该次构建的
 // 官方基线与个人补丁栈主题；更新弹窗据此计算「官方更新 / 个人修改」两个区间
 const BUILDS_HISTORY_PATH = join(app.getPath("home"), ".zcode", "v2", "personal-mods-builds.jsonl");
-// CI 发布清单固定地址（GitHub Release latest 直链）。fork 建好后填
-// https://github.com/<user>/<repo>/releases/latest/download/personal-update.json，
+// CI 发布清单固定地址（GitHub Release latest 直链）。
 // 留空 = 远程更新通道关闭，仅用本地构建源
-const PERSONAL_UPDATE_MANIFEST_URL = "";
+const PERSONAL_UPDATE_MANIFEST_URL =
+  "https://github.com/l1m2e/ZCode/releases/latest/download/personal-update.json";
 const REMOTE_CHECK_INTERVAL_MS = 60 * 1000;
 // 与官方 autoUpdater 的 AUTO_UPDATE_POLL_INTERVAL_MS 同口径：15 分钟检查一次
 const OFFICIAL_SYNC_POLL_INTERVAL_MS = 15 * 60 * 1000;
