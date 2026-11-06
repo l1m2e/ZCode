@@ -32,6 +32,8 @@ concurrency:
 jobs:
   build:
     runs-on: macos-14
+    outputs:
+      skip: ${{ steps.guard.outputs.skip }}
     env:
       UPSTREAM_URL: https://github.com/zai-org/ZCode.git
       ZCODE_ENV: production
@@ -126,3 +128,50 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: scripts/publish-personal-release.sh
+
+  # Windows 安装包（NSIS x64，未签名）追加到 mac job 刚发布的同一个 Release。
+  # needs 串行：mac job 负责 rebase + force-push + 发 Release，这里检出 rebase 后的
+  # 同一 HEAD 构建，保证两个平台产物同源。产物仅供手动下载安装——app 内绿点与
+  # --install-remote 自动更新是 macOS 专属（bash/ditto 安装器），不消费 win 资产。
+  windows:
+    needs: build
+    if: needs.build.outputs.skip != 'true'
+    runs-on: windows-latest
+    env:
+      ZCODE_ENV: production
+      ZCODE_PREVIEW_IDENTITY: "1"
+      # 全仓 tsc -b 的堆需求与 mac 同源；windows-latest 内存充裕，给足余量
+      NODE_OPTIONS: --max-old-space-size=8192
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: personal-mods
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile || pnpm install --frozen-lockfile
+
+      # typecheck/lint 已由 mac job 对同一 HEAD 跑过，不重复烧时间
+      - name: Build windows installer
+        run: |
+          pnpm --filter @zcode/desktop build
+          pnpm bundle:desktop -- --os win --arch x64
+
+      - name: Upload installer to Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)
+          # 输出目录按架构隔离，不猜层级直接找；排除 blockmap
+          exe=$(find packages/desktop/dist -name 'ZCode*win*.exe' ! -name '*.blockmap' | head -1)
+          [ -n "$exe" ] || { echo "windows installer not found"; exit 1; }
+          gh release upload "$tag" "$exe" --repo "$GITHUB_REPOSITORY" --clobber
