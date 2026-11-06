@@ -396,11 +396,13 @@ async function checkRemoteUpdate(options: InitSelfBuiltUpdateOptions): Promise<v
 }
 
 function spawnInstaller(manifest: PersonalUpdateManifest): void {
-  // detached：app.exit 后安装器继续完成替换并重启
+  // detached：app.exit 后安装器继续完成替换并重启。
+  // APP_PID 让脚本用 kill -0 精确等待主进程退出，替代会误匹配 zcode-cli 等
+  // 存活子进程（进程标题内嵌含 app 路径的 PATH）的 pgrep -f
   const child = spawn("/bin/bash", [manifest.scriptPath, "--install-only"], {
     detached: true,
     stdio: "ignore",
-    env: { ...process.env, PERSONAL_INSTALL_WAIT_MS: String(INSTALLER_WAIT_MS) },
+    env: { ...process.env, PERSONAL_INSTALL_WAIT_MS: String(INSTALLER_WAIT_MS), APP_PID: String(process.pid) },
   });
   child.unref();
 }
@@ -453,7 +455,7 @@ export function initSelfBuiltUpdateSupport(options: InitSelfBuiltUpdateOptions):
       const child = spawn(
         "/bin/bash",
         [localManifest.scriptPath, "--install-remote", remote.zipUrl ?? "", remote.sha256 ?? ""],
-        { detached: true, stdio: "ignore", env: { ...process.env, PERSONAL_INSTALL_WAIT_MS: String(INSTALLER_WAIT_MS) } },
+        { detached: true, stdio: "ignore", env: { ...process.env, PERSONAL_INSTALL_WAIT_MS: String(INSTALLER_WAIT_MS), APP_PID: String(process.pid) } },
       );
       child.unref();
       await options.prepareQuit();
