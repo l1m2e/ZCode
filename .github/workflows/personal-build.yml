@@ -31,7 +31,9 @@ concurrency:
 
 jobs:
   build:
-    runs-on: macos-14
+    # 2026-11-06：macos-14 被 GitHub 下线（job 秒取消，注解 "configuration
+    # not supported"），改用 macos-latest 跟随当前 arm64 镜像，避免再次退役断流
+    runs-on: macos-latest
     outputs:
       skip: ${{ steps.guard.outputs.skip }}
     env:
@@ -39,8 +41,8 @@ jobs:
       ZCODE_ENV: production
       ZCODE_PREVIEW_IDENTITY: "1"
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
-      # macos-14 runner 只有 7GB 内存，Node 默认堆上限会让 tsc -b 全仓编译直接
-      # SIGABRT（exit 134）；显式放大到接近机器上限
+      # GitHub arm64 macOS runner 只有 7GB 内存，Node 默认堆上限会让 tsc -b 全仓
+      # 编译直接 SIGABRT（exit 134）；显式放大到接近机器上限
       NODE_OPTIONS: --max-old-space-size=5120
     steps:
       - uses: actions/checkout@v4
