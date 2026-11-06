@@ -90,17 +90,25 @@ write_build_metadata() {
 
 echo "=== $(date '+%F %T') start ==="
 
-# 等待运行中的 app 退出（安装前置步骤，--install-only / --install-remote 共用）
+# 等待运行中的 app 退出（安装前置步骤，--install-only / --install-remote 共用）。
+# 优先用 app 拉起安装器时注入的 APP_PID 做 kill -0 探测：旧的 pgrep -f "ZCode Preview"
+# 会误匹配进程标题里内嵌 PATH（含 "ZCode Preview.app" 字样）的 zcode-cli/MCP 等
+# 存活子进程，导致等待超时放弃安装；无 APP_PID（手动调用）时退回 pgrep。
 wait_app_exit() {
   wait_seconds="${PERSONAL_INSTALL_WAIT_MS:-90000}"
   wait_seconds=$((wait_seconds / 1000))
+  if [ -n "${APP_PID:-}" ]; then
+    for _ in $(seq 1 "$wait_seconds"); do
+      kill -0 "$APP_PID" 2>/dev/null || return 0
+      sleep 1
+    done
+    fail "应用未能退出（pid $APP_PID），未替换"
+  fi
   for _ in $(seq 1 "$wait_seconds"); do
-    pgrep -f "ZCode Preview" >/dev/null || break
+    pgrep -f "ZCode Preview" >/dev/null || return 0
     sleep 1
   done
-  if pgrep -f "ZCode Preview" >/dev/null; then
-    fail "应用未能退出，未替换"
-  fi
+  fail "应用未能退出，未替换"
 }
 
 # --record：手动 bundle 后补写构建元数据（构建 ID / 更新清单 / 构建历史），
@@ -119,7 +127,13 @@ if [ "${1:-}" = "--install-remote" ]; then
   want_sha="${3:-}"
   [ -n "$zip_url" ] && [ -n "$want_sha" ] || fail "用法：--install-remote <zipUrl> <sha256>"
   stage="$(mktemp -d)"
-  curl -fsSL --retry 3 "$zip_url" -o "$stage/build.zip" || fail "下载构建包失败：$zip_url"
+  # 下载发生在 app 退出之后：慢网时用户要等完整个 230MB 才见到重启，介意的话
+  # 再改成主进程先下载到 staging、退出后只做本地替换
+  notify "开始下载自编译更新包，完成后自动重启"
+  # 必须带超时：2026-11-06 实测 GitHub CDN 挂起时 curl 无 --max-time 会永久卡住——
+  # app 已退出、无日志无通知，用户只能手动重开，安装不了了之
+  curl -fsSL --retry 3 --connect-timeout 20 --max-time 1800 "$zip_url" -o "$stage/build.zip" \
+    || fail "下载构建包失败（网络超时或不可达），请重开 app 重试：$zip_url"
   echo "$want_sha  $stage/build.zip" | shasum -a 256 -c - >/dev/null || fail "sha256 校验失败，已中止安装"
   ditto -x -k "$stage/build.zip" "$stage/app" || fail "解包失败"
   xattr -dr com.apple.quarantine "$stage/app" 2>/dev/null || true
