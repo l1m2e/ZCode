@@ -63,7 +63,7 @@ fork 仓库（公开）+ `personal-mods` 设为默认分支后，`.github/workfl
 
 1. **触发**：schedule 15 分钟（守卫：官方没动且 HEAD 已发布则秒退）/ push personal-mods / 手动 dispatch。push 带 paths 过滤——只有 `packages/**` 等业务代码变更才构建，纯文档（`**/*.md`）与流水线（`.github/**`、`scripts/**`）改动不触发；schedule 不受 paths 影响。concurrency 串行化。
 2. **流程**：rebase 到官方 main（CI 会 force-push 回远端分支，本地 pull --rebase 跟进）→ 校验 → macos-14 构建 → `--record` 写元数据 → `publish-personal-release.sh` 发 Release。
-3. **产物**：Release = zip/dmg + `personal-update.json`（version/buildId/zipUrl/sha256/officialBase/personal[]）。构建序号 p<N> 以仓库 `personal-*` tag 数为准，本地与 CI 共用同一计数器。构建 ID 由 Record 步骤后补注进 zip（dmg 不含，手动装 dmg 的 app 无构建号，走一次远程自动更新即补齐）。
+3. **产物**：Release = zip/dmg + `personal-update.json`（version/buildId/zipUrl/sha256/officialBase/personal[]）+ Windows NSIS 安装包（x64，未签名，`windows` job 在 mac job 后对同一 HEAD 构建并追加上传；仅供手动下载安装，app 内绿点与 `--install-remote` 自动更新是 macOS 专属，不消费 win 资产）。构建序号 p<N> 以仓库 `personal-*` tag 数为准，本地与 CI 共用同一计数器。构建 ID 由 Record 步骤后补注进 zip（dmg 不含，手动装 dmg 的 app 无构建号，走一次远程自动更新即补齐）。
 4. **app 消费**：`personalSelfBuiltUpdate.ts` 的 `PERSONAL_UPDATE_MANIFEST_URL` 填入后，60 秒轮询 `releases/latest/download/personal-update.json`；防回退比对用「p<N> 序号（补零）+ 尾部 UTC 时间戳」排序键——序号更大即点亮，序号相同（本地历史行数计数与 CI tag 计数撞号）时时间戳必须严格更新才点亮；点更新走 `sync-personal-mods.sh --install-remote <zipUrl> <sha256>`（下载 → sha256 校验 → 剥 quarantine → 替换重启）。URL 留空 = 远程通道关闭，只剩手动构建的 watch 点亮。
 5. **注意**：Actions 定时任务在仓库 60 天无活动后自动停用；CI rebase 冲突时 job 失败，按手动同步流程在本地解。
 
