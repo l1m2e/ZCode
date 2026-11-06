@@ -27,7 +27,10 @@ permissions:
 
 concurrency:
   group: personal-build
-  cancel-in-progress: true
+  # 不取消进行中的构建：mac+windows 串行链路约 40 分钟，schedule/dispatch 重叠时
+  # cancel 会把跑了大半的长构建掐死重来（2026-11-06 实测 dispatch 被 schedule 取消）。
+  # 排队等待即可——重复 run 会被 guard 以「HEAD 已发布」在十几秒内跳过，成本可忽略。
+  cancel-in-progress: false
 
 jobs:
   build:
