@@ -71,6 +71,8 @@ write_build_metadata() {
   built_at=$(date -u +%FT%TZ)
 
   printf '%s\n' "$build_id" > "$DIST/.personal-build-id"
+  # 记录本次产物的源码 HEAD：守卫据此判断 dist 是否构建自当前 personal-mods
+  git rev-parse HEAD > "$DIST/.personal-build-head"
   printf '{\n  "version": "%s",\n  "buildId": "%s",\n  "distPath": "%s",\n  "scriptPath": "%s",\n  "repoPath": "%s",\n  "builtAt": "%s"\n}\n' \
     "$dist_version" "$build_id" "$PWD/$DIST" "$PWD/scripts/sync-personal-mods.sh" "$PWD" "$built_at" \
     > "$HOME/.zcode/v2/personal-mods-update.json"
@@ -183,11 +185,14 @@ if [ "$fetch_ok" != "1" ]; then
 fi
 
 remote_main=$(git rev-parse origin/main)
-# 已是最新且已安装的构建就是当前产物（ditto 保留 mtime，比较构建 ID 而非时间）
+# 已是最新且已安装的构建就是当前产物（ditto 保留 mtime，比较构建 ID 而非时间）。
+# 还必须校验产物构建自当前 personal-mods HEAD：2026-11-06 实测分支新增提交后
+# 守卫只比官方基线与「dist==已装」，把陈旧产物误判为最新直接跳过重建
 if [ "$(git rev-parse main)" = "$remote_main" ] &&
   [ "$(git merge-base main personal-mods)" = "$remote_main" ] &&
   [ -f "$DIST/.personal-build-id" ] &&
-  cmp -s "$DIST/.personal-build-id" "$APP/.personal-build-id"; then
+  cmp -s "$DIST/.personal-build-id" "$APP/.personal-build-id" &&
+  [ "$(cat "$DIST/.personal-build-head" 2>/dev/null)" = "$(git rev-parse personal-mods)" ]; then
   echo "up to date, exit"
   exit 0
 fi
