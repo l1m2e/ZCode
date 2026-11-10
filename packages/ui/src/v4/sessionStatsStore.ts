@@ -11,11 +11,18 @@ import type { ConversationTelemetryFact } from "@zcode/shared/zcode-protocol-v4"
  * - 模型用时：model.request.status completed 的 durationMs 之和（同一来源白名单）；
  * - 工具调用用时：tool.lifecycle completed/failed 的 durationMs 之和；
  * - 首 token 平均：每步 model_request_started → 首包的间隔均值（优先 CLI 权威 firstTokenAt）；
- * - 输出速度：累计 outputTokens ÷ 每步解码时长之和；解码窗口优先用 CLI 权威
- *   「firstTokenAt → usage.delta occurredAt」，stream.chunk 首尾差只作旧事件回退，
- *   因为高频 chunk 事实在实时链路上到达不完整会把窗口压塌、TPS 虚高几十倍。
+ * - 输出速度（dsh deriveTurnMetrics 同口径）：采样步输出 token 之和 ÷ 采样步解码时长之和。
+ *   采样步 = 解码窗口齐备的步，分子分母同步入账；缺窗口的步（如无任何输出打点的步）
+ *   两边都不入，否则 token 累进分子而分母为空，TPS 虚高几个量级。
+ *   解码窗口优先用 CLI 权威「firstOutputAt → usage.delta occurredAt」：firstOutputAt 是
+ *   本步首个任意通道输出（含工具参数流），工具密集步的大部分时长在流式输出工具参数，
+ *   只认 firstTokenAt（首个 text/reasoning delta）会把这段时长排除在分母外而分子仍含
+ *   这些 token，TPS 虚高一个量级（docs/chat/session-stats-chip-tps-caliber.md）。
+ *   firstOutputAt 缺失（旧 CLI）回退 firstTokenAt，均不设短流门槛（dsh 的 fold 只要求
+ *   解码时长之和 > 0）；stream.chunk 首尾差只作两者皆缺的旧事件回退，且该回退窗口保留
+ *   MIN_ROUND_MS 门槛——高频 chunk 事实在实时链路上会被裁掉，短差不可信。
  *
- * in-flight 步不参与计算；短于 MIN_ROUND_MS 的流视为噪声丢弃。
+ * in-flight 步不参与计算。
  * 数据只覆盖本 renderer 存活期间收到的事实（旧 t/s store 同限），恢复历史会话不回填。
  * ponytail: 单槽 per-round 状态，主轮与 subagent 流式交错时 TTFT/TPS 会掺入相邻步的
  * 打点（旧 store 同样假设轮次串行）；需要精确按 requestId 分账时再升级为多槽。
@@ -61,6 +68,8 @@ interface SessionStatState {
   turns: number;
   steps: number;
   outputTokens: number;
+  /** 采样步（解码窗口齐备）的输出 token 之和，TPS 分子；与 decodeMs 同步入账。 */
+  sampledOutputTokens: number;
   llmMs: number;
   toolMs: number;
   ttftMs: number;
@@ -112,6 +121,7 @@ function ensureStat(sessionId: string): SessionStatState {
       turns: 0,
       steps: 0,
       outputTokens: 0,
+      sampledOutputTokens: 0,
       llmMs: 0,
       toolMs: 0,
       ttftMs: 0,
@@ -168,6 +178,7 @@ function settleRound(
   outputTokens: number,
   firstTokenAt?: number,
   completedAt?: number,
+  firstOutputAt?: number,
 ): void {
   const runStartAt = stat.runStartAt;
   const lastChunkAt = stat.lastChunkAt;
@@ -178,20 +189,43 @@ function settleRound(
   stat.roundRequestStartAt = null;
   stat.steps += 1;
   stat.outputTokens += outputTokens;
-  // 解码分母优先用 CLI 权威「首包→完成」窗口（dsh 同口径）：stream.chunk 事实是高频
-  // 旁路信号，实时链路上到达不完整时窗口会塌缩，TPS 被放大几十倍。chunk 累计只在
-  // 旧事件缺失 firstTokenAt 时回退使用。
+  // 解码窗口优先用 CLI 权威「首个输出→完成」：工具密集步的大部分时长在流式输出工具
+  // 参数（tool_input_delta 持续到达），firstTokenAt 只标记首个 text/reasoning delta，
+  // 窗口排除工具参数生成期而分子 outputTokens 含这些 token，TPS 会虚高一个量级
+  // （docs/chat/session-stats-chip-tps-caliber.md）。firstOutputAt 缺失（旧 CLI）时
+  // 回退 firstTokenAt；两者都缺失再用 stream.chunk 首尾差，且保留 MIN_ROUND_MS 门槛
+  // 挡住高频 chunk 事实被实时链路裁剪后的塌缩差值。
   let decodeWindowMs: number | null = null;
   let ttftEndAt: number | null = null;
-  if (firstTokenAt !== undefined && completedAt !== undefined && completedAt >= firstTokenAt) {
+  const hasOutputWindow =
+    firstOutputAt !== undefined && completedAt !== undefined && completedAt >= firstOutputAt;
+  const hasTokenWindow =
+    firstTokenAt !== undefined && completedAt !== undefined && completedAt >= firstTokenAt;
+  if (hasOutputWindow) {
+    // 权威「首个任意通道输出→完成」窗口：覆盖工具参数流式期。
+    decodeWindowMs = completedAt - firstOutputAt;
+  } else if (hasTokenWindow) {
     decodeWindowMs = completedAt - firstTokenAt;
-    ttftEndAt = firstTokenAt;
-  } else if (runStartAt !== null && lastChunkAt !== null) {
+  } else if (
+    runStartAt !== null &&
+    lastChunkAt !== null &&
+    lastChunkAt - runStartAt >= MIN_ROUND_MS
+  ) {
+    // chunk 回退窗口只在权威时间戳整体缺失时使用（旧事件）；高频 chunk 事实在实时
+    // 链路上会被裁剪，短差不可信，保留 MIN_ROUND_MS 门槛。零窗口的权威步按缺窗口
+    // 处理（两边都不入采样），不得掉进 chunk 回退。
     decodeWindowMs = lastChunkAt - runStartAt;
     ttftEndAt = runStartAt;
   }
-  if (decodeWindowMs !== null && outputTokens > 0 && decodeWindowMs >= MIN_ROUND_MS) {
+  // TTFT 终点始终是用户感知首包（首个 text/reasoning delta），与解码窗口起点选择无关。
+  if (hasTokenWindow) {
+    ttftEndAt = firstTokenAt;
+  }
+  // dsh 口径：采样步（窗口齐备）的输出 token 与解码时长同步入账；缺窗口的步两边都不入，
+  // 避免 token 只进分子把 TPS 推高。dsh 的 fold 只要求解码时长之和 > 0，无短流门槛。
+  if (decodeWindowMs !== null && decodeWindowMs > 0) {
     stat.decodeMs += decodeWindowMs;
+    stat.sampledOutputTokens += outputTokens;
   }
   if (ttftEndAt !== null && roundRequestStartAt !== null) {
     stat.ttftMs += Math.max(0, ttftEndAt - roundRequestStartAt);
@@ -232,7 +266,7 @@ export function noteConversationFactForSessionStats(fact: ConversationTelemetryF
       }
       break;
     case "usage.delta":
-      settleRound(stat, fact.outputTokens, fact.firstTokenAt, fact.occurredAt);
+      settleRound(stat, fact.outputTokens, fact.firstTokenAt, fact.occurredAt, fact.firstOutputAt);
       break;
     default:
       break;
@@ -260,7 +294,7 @@ function resolveSnapshot(sessionId: string): SessionStatsSnapshot {
         stat.ttftSteps > 0 ? Math.round(stat.ttftMs / stat.ttftSteps) : null,
       tokensPerSecond:
         stat.decodeMs > 0
-          ? Math.round((stat.outputTokens / (stat.decodeMs / 1_000)) * 10) / 10
+          ? Math.round((stat.sampledOutputTokens / (stat.decodeMs / 1_000)) * 10) / 10
           : null,
     };
   }

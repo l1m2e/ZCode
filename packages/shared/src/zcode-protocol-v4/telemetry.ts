@@ -69,8 +69,11 @@ const turnStartedFactSchema = z
     modelProvider: z.string().optional(),
     executionKind: z.enum(["agent", "controlOnly"]).optional(),
     inputSource: zcodeSyntheticUserMessageSourceSchema.optional(),
-    // `workflow`：dynamic-workflow run 的完成 / 提问通知唤起的独立轮。
-    backgroundSource: z.enum(["bash", "subagent", "workflow"]).optional(),
+    // `workflow`：dynamic-workflow run 的完成 / 提问通知唤起的独立轮；
+    // `spawned_thread`：CreateSession 派生会话首轮结算通知唤起的独立轮。
+    backgroundSource: z
+      .enum(["bash", "subagent", "workflow", "spawned_thread"])
+      .optional(),
     automationId: z.string().min(1).optional(),
     offPeakTaskId: z.string().min(1).optional(),
     offPeakRunType: z.enum(["init", "resume"]).optional(),
@@ -188,6 +191,11 @@ const usageDeltaFactSchema = z
     cacheWriteTokens: z.number().nonnegative(),
     /** 本步首个 text/reasoning delta 的 epoch ms（CLI 权威口径）；旧事件或纯工具调用步可能缺失。 */
     firstTokenAt: timestampSchema.optional(),
+    /**
+     * 本步首个任意通道输出事件（含工具参数流）的 epoch ms（CLI 权威口径）；renderer
+     * 会话统计的解码分母首选它对齐工具密集步的真实生成期，旧 CLI 可能缺失。
+     */
+    firstOutputAt: timestampSchema.optional(),
   })
   .strict();
 
