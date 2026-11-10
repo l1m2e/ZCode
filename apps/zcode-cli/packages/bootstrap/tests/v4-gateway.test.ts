@@ -1014,7 +1014,9 @@ describe("订阅与帧调度", () => {
           stopReason: "stop",
           querySource: "main_turn",
           // CLI 权威首包时间随 usage.delta 下发，供 renderer 会话统计做解码分母。
+          // firstOutputAt 覆盖工具参数流式期（docs/chat/session-stats-chip-tps-caliber.md）。
           firstTokenAt: 1_700_000_000_000,
+          firstOutputAt: 1_699_999_993_000,
           usage: {
             inputTokens: 10,
             outputTokens: 4,
@@ -1032,6 +1034,7 @@ describe("订阅与帧调度", () => {
         totalTokens: 14,
         reasoningTokens: 3,
         firstTokenAt: 1_700_000_000_000,
+        firstOutputAt: 1_699_999_993_000,
       }),
     ]);
   });

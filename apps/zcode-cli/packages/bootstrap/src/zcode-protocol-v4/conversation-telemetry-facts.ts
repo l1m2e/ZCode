@@ -592,6 +592,7 @@ export class ConversationTelemetryFactNormalizer {
         if (!isStepUsageModelComplete(payload)) return null;
         const usage = recordValue(payload.usage);
         const firstTokenAt = nonNegative(payload.firstTokenAt);
+        const firstOutputAt = nonNegative(payload.firstOutputAt);
         return conversationTelemetryFactSchema.parse({
           ...base,
           kind: "usage.delta",
@@ -618,7 +619,9 @@ export class ConversationTelemetryFactNormalizer {
           cacheWriteTokens: nonNegative(usage.cacheWriteTokens) ?? 0,
           // renderer 会话统计的解码分母改用 CLI 权威「首包→完成」窗口，
           // 不再依赖 stream.chunk 事实在实时链路上的到达完整性。
+          // firstOutputAt 覆盖工具参数流式期（docs/chat/session-stats-chip-tps-caliber.md）。
           ...(firstTokenAt !== undefined ? { firstTokenAt } : {}),
+          ...(firstOutputAt !== undefined ? { firstOutputAt } : {}),
         });
       }
       case SessionEventType.DynamicWorkflowRunProgress: {
