@@ -387,7 +387,36 @@ function firstModelTokenAt(
   return undefined;
 }
 
-export { firstModelTokenAt };
+/**
+ * 本步首个「任意通道输出」事件的 epoch ms：非空 text/reasoning delta，或工具调用参数的
+ * 首个输出（tool_input_start / 非空 tool_input_delta）。工具密集步的大部分时长在流式
+ * 输出工具参数，firstTokenAt 窗口会把这段排除在解码分母之外，TPS 被虚高一个量级；
+ * 会话统计改用本时间戳对齐分母（docs/chat/session-stats-chip-tps-caliber.md）。
+ */
+function firstModelOutputAt(
+  events: readonly SessionEvent[],
+  startIndex: number,
+): number | undefined {
+  for (const event of events.slice(startIndex)) {
+    if (event.type !== SessionEventType.ModelStreaming) continue;
+    const payload = event.payload as { delta?: string; kind?: string };
+    if (payload.kind === "tool_input_start") {
+      return event.timestamp.getTime();
+    }
+    if (
+      (payload.kind === "text_delta" ||
+        payload.kind === "reasoning_delta" ||
+        payload.kind === "tool_input_delta") &&
+      payload.delta &&
+      payload.delta.length > 0
+    ) {
+      return event.timestamp.getTime();
+    }
+  }
+  return undefined;
+}
+
+export { firstModelOutputAt, firstModelTokenAt };
 
 function errorInfoFor(
   error: unknown,

@@ -65,6 +65,7 @@ function usageDelta(
   occurredAt: number,
   outputTokens: number,
   firstTokenAt?: number,
+  firstOutputAt?: number,
 ): ConversationTelemetryFact {
   return fact({
     kind: "usage.delta",
@@ -77,6 +78,7 @@ function usageDelta(
     cacheReadTokens: 800,
     cacheWriteTokens: 0,
     ...(firstTokenAt !== undefined ? { firstTokenAt } : {}),
+    ...(firstOutputAt !== undefined ? { firstOutputAt } : {}),
   });
 }
 
@@ -155,6 +157,62 @@ describe("sessionStatsStore", () => {
       // 500 tok ÷ 10s = 50 tok/s，而不是塌缩分母推出的数千 tok/s。
       tokensPerSecond: 50,
       ttftMs: 1_000,
+    });
+  });
+
+  it("缺解码窗口的步不进 TPS 分子（dsh 采样步口径）", () => {
+    const sessionId = "stats-unsampled-numerator";
+    // 纯工具调用步：无 text/reasoning 首包 → 无 firstTokenAt、无 chunk，窗口缺失。
+    // 旧口径把它的 40 tok 累进分子而分母为空，与采样步混算后 TPS 虚高。
+    noteConversationFactForSessionStats(requestStarted(sessionId, 1_000));
+    noteConversationFactForSessionStats(requestCompleted(sessionId, 2_000, 1_000));
+    noteConversationFactForSessionStats(usageDelta(sessionId, 2_000, 40));
+    // 采样步：首包 3s → 完成 7s，400 tok ÷ 4s = 100 tok/s。
+    noteConversationFactForSessionStats(requestStarted(sessionId, 3_000));
+    noteConversationFactForSessionStats(requestCompleted(sessionId, 7_000, 4_000));
+    noteConversationFactForSessionStats(usageDelta(sessionId, 7_000, 400, 3_000));
+
+    const { result } = renderHook(() => useSessionStats(sessionId));
+    expect(result.current).toMatchObject({
+      steps: 2,
+      outputTokens: 440,
+      tokensPerSecond: 100,
+    });
+  });
+
+  it("工具密集步的解码分母优先用 firstOutputAt，覆盖工具参数流式期", () => {
+    const sessionId = "stats-first-output";
+    // 步：firstOutputAt 3s（工具参数开始流）→ firstTokenAt 10s（正文首包）→ 完成 12s，
+    // 900 tok。旧口径窗口只有 12-10=2s → 450 tok/s 虚高；新口径窗口 9s → 100 tok/s。
+    noteConversationFactForSessionStats(requestStarted(sessionId, 1_000));
+    noteConversationFactForSessionStats(requestCompleted(sessionId, 12_000, 11_000));
+    noteConversationFactForSessionStats(usageDelta(sessionId, 12_000, 900, 10_000, 3_000));
+
+    const { result } = renderHook(() => useSessionStats(sessionId));
+    expect(result.current).toMatchObject({
+      steps: 1,
+      outputTokens: 900,
+      tokensPerSecond: 100,
+      // TTFT 语义不变：仍用首个 text/reasoning 首包（10s - 请求开始 1s）。
+      ttftMs: 9_000,
+    });
+  });
+
+  it("firstOutputAt 窗口为零时该步不入采样，不掉进 chunk 回退", () => {
+    const sessionId = "stats-zero-output-window";
+    // chunk 差值 300ms 过门槛，但权威 firstOutputAt == 完成时刻：窗口为零按缺窗口处理，
+    // 不得用可能被实时链路裁剪过的 chunk 差值补采样。
+    noteConversationFactForSessionStats(requestStarted(sessionId, 1_000));
+    noteConversationFactForSessionStats(streamChunk(sessionId, 2_000, true));
+    noteConversationFactForSessionStats(streamChunk(sessionId, 2_300));
+    noteConversationFactForSessionStats(requestCompleted(sessionId, 3_000, 2_000));
+    noteConversationFactForSessionStats(usageDelta(sessionId, 3_000, 600, 3_000, 3_000));
+
+    const { result } = renderHook(() => useSessionStats(sessionId));
+    expect(result.current).toMatchObject({
+      steps: 1,
+      outputTokens: 600,
+      tokensPerSecond: null,
     });
   });
 });
