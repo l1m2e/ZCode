@@ -352,8 +352,9 @@ export interface SubagentResultMeta {
 
 /** 独立后台结果轮的展示元信息；批量轮可复用代表任务身份并合成 title，不从通知文本反向解析。 */
 export interface BackgroundResultOriginMeta {
-  /** `workflow` 是 dynamic-workflow run（workId ≡ runId），复用整条后台通知管线。 */
-  backgroundSource: "bash" | "subagent" | "workflow";
+  /** `workflow` 是 dynamic-workflow run（workId ≡ runId），复用整条后台通知管线。
+   * `spawned_thread` 是 CreateSession 派生的顶层会话线程首轮结算（21-session-create.md）。 */
+  backgroundSource: "bash" | "subagent" | "workflow" | "spawned_thread";
   workId: string;
   title: string;
   /** 只在 backgroundSource === "workflow" 的单条通知轮上在场；manifest 渲染的唯一数据源。 */
@@ -903,6 +904,11 @@ export interface ModelCompletePayload {
   fileChanges?: TurnFileChangeSummary;
   /** 本步首个 text/reasoning delta 事件的 epoch ms；旧事件或纯工具调用步可能缺失。 */
   firstTokenAt?: number;
+  /**
+   * 本步首个任意通道输出事件的 epoch ms（非空 text/reasoning delta 或 tool_input 首个输出）；
+   * renderer 会话统计的解码分母用它覆盖工具参数流式生成期（docs/chat/session-stats-chip-tps-caliber.md）。
+   */
+  firstOutputAt?: number;
   querySource?: string;
   stopReason: string;
   /** 当前模型请求组装出的完整 tool call 数量；旧事件可能缺失。 */
