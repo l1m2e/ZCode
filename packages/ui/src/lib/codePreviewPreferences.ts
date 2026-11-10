@@ -9,6 +9,8 @@ interface CodePreviewThemeOption {
 export const CODE_PREVIEW_THEME_OPTIONS: CodePreviewThemeOption[] = [
   { value: "github-light", label: "GitHub Light" },
   { value: "github-dark", label: "GitHub Dark" },
+  { value: "light-plus", label: "VS Code Light Plus" },
+  { value: "dark-plus", label: "VS Code Dark Plus" },
   { value: "vitesse-light", label: "Vitesse Light" },
   { value: "vitesse-dark", label: "Vitesse Dark" },
   { value: "min-light", label: "Minimal Light" },
@@ -21,6 +23,7 @@ export const CODE_PREVIEW_THEME_OPTIONS: CodePreviewThemeOption[] = [
 
 const DARK_CODE_PREVIEW_THEMES: readonly BundledTheme[] = [
   "github-dark",
+  "dark-plus",
   "vitesse-dark",
   "min-dark",
   "github-dark-high-contrast",
