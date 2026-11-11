@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { registerBuiltInTools, createToolRegistry } from "../src/tool/index.js";
 import { createSessionToolEntry } from "../src/tool/handlers/session-create.js";
 import {
-  CREATE_SESSION_TOOL_NAME,
+  SPAWN_SESSION_TOOL_NAME,
   CoreErrorType,
   type SessionSpawnOutcome,
   type SessionSpawnPort,
@@ -44,13 +44,13 @@ describe("CreateSession tool", () => {
   it("端口缺席时不注册工具", () => {
     const registry = createToolRegistry();
     registerBuiltInTools(registry, { includeSessionCreate: false });
-    expect(registry.has(CREATE_SESSION_TOOL_NAME)).toBe(false);
+    expect(registry.has(SPAWN_SESSION_TOOL_NAME)).toBe(false);
   });
 
   it("端口在场且门控打开时注册工具", () => {
     const registry = createToolRegistry();
     registerBuiltInTools(registry, { includeSessionCreate: true });
-    expect(registry.has(CREATE_SESSION_TOOL_NAME)).toBe(true);
+    expect(registry.has(SPAWN_SESSION_TOOL_NAME)).toBe(true);
   });
 
   it("成功创建时把 prompt/title/父会话/工具调用 ID 交给端口", async () => {
@@ -141,7 +141,7 @@ describe("CreateSession tool", () => {
     const { SUBAGENT_CHILD_FORCED_DISALLOWED_TOOLS } = await import(
       "../src/subagent/tool-policy.js"
     );
-    expect(SUBAGENT_CHILD_FORCED_DISALLOWED_TOOLS).toContain(CREATE_SESSION_TOOL_NAME);
+    expect(SUBAGENT_CHILD_FORCED_DISALLOWED_TOOLS).toContain(SPAWN_SESSION_TOOL_NAME);
   });
 
   it("通知格式化包含子会话身份、状态与摘要边界", async () => {

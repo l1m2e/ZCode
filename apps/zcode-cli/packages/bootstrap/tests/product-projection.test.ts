@@ -1538,7 +1538,7 @@ describe("ProductProjection 黄金测试（L1）", () => {
       SessionEventType.ToolCallScheduled,
       {
         toolCallId,
-        toolName: "CreateSession",
+        toolName: "SpawnSession",
         input: { prompt: "测试", title: "侧边会话派生测试" },
         schedule: { parallelGroups: [[toolCallId]], executionOrder: [toolCallId] },
       },
@@ -1546,7 +1546,7 @@ describe("ProductProjection 黄金测试（L1）", () => {
     );
     log.push(
       SessionEventType.ToolCallStarted,
-      { toolCallId, toolName: "CreateSession", startedAt: new Date(1_700_000_003_000) },
+      { toolCallId, toolName: "SpawnSession", startedAt: new Date(1_700_000_003_000) },
       { turnId: "turn-spawn-launch" },
     );
     log.push(
