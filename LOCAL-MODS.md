@@ -117,6 +117,40 @@ ditto "packages/desktop/dist/mac-arm64/ZCode Preview.app" "/Applications/ZCode P
 | `f315f8c0` | dsh 风格会话统计芯片：输入框正下方居中零高行（轮/步/TPS + Token 用量/缓存命中，悬浮面板），数据来自会话事实归账（sessionStatsStore）与 usage.cumulative |
 | `88712019` | 修复 2026-10-30 rebase 自动合并丢失的 `V4ComposerToolbar` sessionId 解构（官方新增 sessionConfigPending 依赖它） |
 
+## 2026-11-11 同步（官方 a9fe401e v3.17.2 → b95ebaf v3.18.0）冲突解法记录
+
+- 官方改了 51 个 `package.json` 与 lockfile（新增 `@napi-rs/keyring`、`@zcode/design-runtime`
+  等），rebase 后必须先 `pnpm install --frozen-lockfile` 再 typecheck，否则报模块找不到。
+- `execute.tsx`：官方 v3.18.0 **原生支持** description 摘要展示（`description` 变量 +
+  `hideSecondaryTextWhenOpen`），与个人「终端摘要中文描述」提交同一意图且实现更完整。
+  冲突的 title 行取官方实现；`bash.ts` 中文提示词自动合并保留，意图不受损。
+- `architecture-policy.yaml`：照旧保留官方全部新豁免条目，个人两条
+  （`session-stats-unmanaged-new-files`、`self-built-update-personal-files`）置末。
+- `ConversationComposer.tsx`：官方新增 `ComposerStatusSlot` import 与个人
+  `SessionStatsBadges` import 并存。
+- `ConversationTurnGroup.tsx`：官方把轮尾区域整体加深缩进（新父级包裹）并给
+  `ConversationAssistantTextActions` 增加 `turnId`/`sourceCommandIds` props；个人
+  `SessionCreateTurnCards` 按官方缩进插回 `OffPeakTurnCards` 之后，删除个人侧重复块。
+- `App.tsx`：官方把 `WorkspaceShellLayout` 包进新 `ExtensionViewsProvider`（扩展视图标签）。
+  个人 `handleOpenSideChat` / `handleSideChatSessionCreated` 两个 props 插回
+  `handleOpenSelectionSideChat` 之后，其余全取官方。
+- `runtime-tools.ts` / `call-runner.ts` / `handlers/index.ts`：官方
+  `includeTopicResource` / `pluginDiscoveryPort` 与个人 `includeSessionCreate` /
+  `sessionSpawnPort` / `taskType` 并存（官方新功能与个人 CreateSession 同区域新增）。
+- `engineering-test-files.json`：三方条目合并——个人 `sidePaneSideChatTabs.test.ts` +
+  官方新增 `plugin-api/version`、`server/remoteOfficialPluginAssets`。
+- **架构门禁新知**：rebase 后 `--changed` 的 base 是 merge-base(HEAD, fork/personal-mods)
+  = 旧官方基线，首次真实扫到「官方 v3.18.0 + 个人」全量闭包。个人改过的官方存量文件
+  （`diffsHighlighterEngine.ts`）不满足上游 pristine 准入，用
+  `node scripts/architecture/architecture-check.mjs baseline:update --changed`
+  登记进基线（新格式 `{version, violations}`，旧版是裸数组，工具两种都读）。
+  注意：**未跟踪的临时文件会被算进 unmanaged-new-file**——收工前清理 `.tmp-*` 探针，
+  否则基线会收进垃圾条目（updateBaseline 只替换闭包内条目，删文件后旧条目仍留存，
+  需手改 JSON 移除）。
+- fmt 上游漂移：官方 v3.18.0 自带约 1553 个文件不满足新 `.oxfmtrc.json`（含
+  architecture-policy.yaml 的 flow-map 空格风格）。fmt 不在门禁链内，**不代官方全量
+  格式化**（会造成每次同步的无谓冲突），只保持个人新增内容整洁。
+
 ## 2026-10-30 同步（官方 3c5b2276 → a60ba6a7）冲突解法记录
 
 - `conversationTelemetrySupervisor.ts`：官方把遥测重写为 `ConversationTelemetryEngine`
