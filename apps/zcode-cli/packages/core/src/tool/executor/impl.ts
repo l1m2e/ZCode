@@ -65,6 +65,11 @@ export class ToolExecutorImpl implements ToolExecutor {
       sessionControl: options.sessionControl,
       automationPort: options.automationPort,
       offPeakPort: options.offPeakPort,
+      // 修复：这里逐字段重建 ToolExecutorDeps 时漏拷 sessionSpawnPort，导致注册门
+      // （读 AgentRuntimeDeps，port 在场）放行了 CreateSession，但执行上下文
+      // （call-runner 读本 deps）永远拿不到 port，工具一调用就报
+      // "SessionSpawnPort is not configured for CreateSession"。见 21-session-create.md。
+      sessionSpawnPort: options.sessionSpawnPort,
       topicResourcePort: options.topicResourcePort,
       pluginDiscoveryPort: options.pluginDiscoveryPort,
       sessionStore: options.sessionStore,

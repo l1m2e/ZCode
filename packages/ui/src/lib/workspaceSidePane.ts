@@ -227,6 +227,24 @@ export interface SelectionSideChatPaneTab {
   ordinal: number;
 }
 
+/**
+ * 独立侧边会话：与主聊天无父子关系的工作区级草稿台（docs/ui/side-pane-tabs.md「独立侧边会话」）。
+ * 首条消息发送前 childSessionId 缺席，SessionPane 以 sessionId=null 走 draft 预热；
+ * 首发提升后由 onSessionCreated 回填，同 pane 后续轮次复用该会话。
+ */
+export interface SideChatPaneTab {
+  id: string;
+  type: "side-chat";
+  ownerTaskId?: string | null;
+  openedAt?: number;
+  workspaceKey: string;
+  workspacePath: string;
+  workspaceIdentity?: string;
+  remoteSessionId?: string;
+  childSessionId?: string;
+  ordinal: number;
+}
+
 export interface PlanDetailSidePaneTab {
   id: string;
   type: "plan-detail";
@@ -519,6 +537,12 @@ export interface OpenScopedPlanDetailSideTabRequest extends OpenPlanDetailSideTa
   remoteSessionId?: string;
 }
 
+export interface OpenSideChatRequest {
+  workspacePath: string;
+  workspaceIdentity?: string;
+  remoteSessionId?: string;
+}
+
 export interface OpenSelectionSideChatRequest {
   workspacePath: string;
   workspaceIdentity?: string;
@@ -586,6 +610,7 @@ export type WorkspaceSidePaneTab =
   | SubagentSessionSidePaneTab
   | SubagentDirectorySidePaneTab
   | SelectionSideChatPaneTab
+  | SideChatPaneTab
   | PlanDetailSidePaneTab
   | PluginUiSidePaneTab
   | ExtensionViewSidePaneTab
@@ -1192,6 +1217,8 @@ export function isSidePaneTabVisibleInScope(
     case "extension-logs":
     case "plugin-market":
     case "treemapping":
+    // 独立侧边会话是 workspace 级草稿台，不随主区切换会话隐藏。
+    case "side-chat":
       return true;
     case "browser-use":
       return tab.sessionId === scope.ownerTaskId;
@@ -2089,6 +2116,62 @@ function getNextSelectionSideChatOrdinal(
   return ordinal;
 }
 
+function createSideChatPaneTab(
+  options: OpenSideChatRequest & { workspaceKey: string; ordinal: number },
+): SideChatPaneTab {
+  return {
+    id: ["side-chat", encodeSidePaneTabIdPart(options.workspaceKey), createUuid()].join(":"),
+    type: "side-chat",
+    openedAt: Date.now(),
+    workspaceKey: options.workspaceKey,
+    workspacePath: options.workspacePath,
+    ...(options.workspaceIdentity ? { workspaceIdentity: options.workspaceIdentity } : {}),
+    ...(options.remoteSessionId ? { remoteSessionId: options.remoteSessionId } : {}),
+    ordinal: options.ordinal,
+  };
+}
+
+/** 每次点击都新建一个独立侧边会话 tab（多开，ordinal 排序）；不合并既有 tab。 */
+export function openSideChatPane(
+  current: WorkspaceSidePaneState | null,
+  options: OpenSideChatRequest & { workspaceKey: string },
+): WorkspaceSidePaneState {
+  const ordinal = getNextSideChatOrdinal(current?.tabs ?? [], options.workspaceKey);
+  return activateSidePaneTab(current, createSideChatPaneTab({ ...options, ordinal }));
+}
+
+function getNextSideChatOrdinal(
+  tabs: readonly WorkspaceSidePaneTab[],
+  workspaceKey: string,
+): number {
+  const used = new Set(
+    tabs.flatMap((tab) =>
+      tab.type === "side-chat" && tab.workspaceKey === workspaceKey ? [tab.ordinal] : [],
+    ),
+  );
+  let ordinal = 1;
+  while (used.has(ordinal)) ordinal += 1;
+  return ordinal;
+}
+
+/** draft 首发提升后回填 tab 的真实会话；同值幂等，tab 已关闭时为空操作。 */
+export function setSideChatPaneSession(
+  state: WorkspaceSidePaneState | null,
+  tabId: string,
+  childSessionId: string,
+): WorkspaceSidePaneState | null {
+  if (!state) return state;
+  let changed = false;
+  const tabs = state.tabs.map((tab) => {
+    if (tab.type !== "side-chat" || tab.id !== tabId || tab.childSessionId === childSessionId) {
+      return tab;
+    }
+    changed = true;
+    return { ...tab, childSessionId };
+  });
+  return changed ? { ...state, tabs } : state;
+}
+
 export function getActiveSelectionSideChatTab(
   current: WorkspaceSidePaneState | null,
   scope: { workspaceKey: string; parentSessionId: string },
@@ -2289,6 +2372,7 @@ export function selectSidePaneTabsForScope(
         tab.type === "subagent-session" ||
         tab.type === "subagent-directory" ||
         tab.type === "selection-side-chat" ||
+        tab.type === "side-chat" ||
         tab.type === "plan-detail" ||
         tab.type === "workflow-run" ||
         tab.type === "workflow-actor-session" ||

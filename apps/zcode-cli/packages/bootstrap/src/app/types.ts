@@ -41,6 +41,7 @@ import type {
   ModelToolCall,
   ModelUsage,
   OffPeakPort,
+  SessionSpawnPort,
   TopicResourcePort,
   PdfDocumentPort,
   PermissionBrokerPort,
@@ -240,6 +241,8 @@ export interface ZCodeAppOptions {
   sessionControl?: SessionControlBinding;
   automationPort?: AutomationPort;
   offPeakPort?: OffPeakPort;
+  /** CreateSession 的进程内建会话端口；缺席则工具不注册（21-session-create.md）。 */
+  sessionSpawnPort?: SessionSpawnPort;
   topicResourcePort?: TopicResourcePort;
   pluginDiscoveryPort?: PluginDiscoveryPort;
   /** 首次真实用户执行或 cold-resume fallback 时解析一次，之后由 app 生命周期缓存。 */

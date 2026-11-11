@@ -120,6 +120,18 @@ Build/Edit 无明确授权时请求审批，Plan 拒绝；完整命令授权、�
 CMD、前缀/通配授权不放行、完整授权、Plan 拒绝、审批拒绝前执行端零调用以及能力事件。
 细节见 [Bash](04-bash.md#权限模型)。
 
+## CreateSession 发起新会话线程（2026-11-10）
+
+新增内置工具 `CreateSession`：模型在当前会话中创建一个顶层会话线程（侧栏可见、落盘、可继续
+对话），带可选标题与必需的初始任务；子会话 `taskType = spawned_thread`（新值，进
+`TASK_LIST_SESSION_TYPES`），继承父会话模型选型与权限模式，经 create/resume 参数既有
+`toolDenylist` 永久看不到 `CreateSession`。创建走进程内 v4 `createSession` 信封经既有
+`V4CommandExecutor` 执行（CommandInbox 幂等与账本不旁路）；子会话首轮 `TurnComplete` /
+`TurnError` 经 gateway 新钩子 `onSpawnedThreadTurnTerminal` 查 spawn 登记表，向父会话投递
+**恰好一次**后台通知（复用 `enqueueBackgroundTaskNotification`；父未加载时写 pending 标记、
+resume 时补发）。automation / off-peak 轮与子代理工具池禁用该工具；Plan 模式经既有闸门拒绝。
+工具 schema、通知文本、display 与 UI 卡片合同见 [21-session-create.md](21-session-create.md)。
+
 ## Bash 注入会话上下文环境变量（2026-11-01）
 
 Bash handler → `createExecutionRequest` → `ExecutionRequest.env.set`：每次 Bash 调用（前台、显式后台、

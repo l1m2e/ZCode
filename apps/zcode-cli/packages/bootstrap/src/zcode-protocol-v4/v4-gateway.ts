@@ -362,6 +362,15 @@ export interface V4GatewayHost {
   /** canonical goal complete 已进入 projection；宿主副作用必须 detached，禁止阻塞 ingest。 */
   onTargetCompleted?(sessionId: string, event: SessionEvent): void;
   /** Highspeed 真实耗时在 CLI 终态落 transcript；宿主副作用必须 detached。 */
+  /**
+   * spawned_thread 子会话首轮 TurnComplete/TurnError；bootstrap 据此向父会话投递
+   * 恰好一次后台通知（21-session-create.md）。带 snapshot 供末段摘要取材。
+   */
+  onSpawnedThreadTurnTerminal?(
+    sessionId: string,
+    event: SessionEvent,
+    snapshot: ConversationSnapshot,
+  ): void;
   onHighspeedTurnTerminal?(
     sessionId: string,
     event: SessionEvent,
@@ -1141,6 +1150,11 @@ export class ConversationV4Gateway {
         this.host.onHighspeedTurnTerminal?.(sessionId, event, publisher.getSnapshot());
       } catch (error) {
         this.host.onError?.("v4.projection.highspeedMetrics", error);
+      }
+      try {
+        this.host.onSpawnedThreadTurnTerminal?.(sessionId, event, publisher.getSnapshot());
+      } catch (error) {
+        this.host.onError?.("v4.projection.spawnedThreadTerminal", error);
       }
     }
     if (
@@ -2646,6 +2660,14 @@ export class ConversationV4Gateway {
    * await 不会把 RPC 挂到整个 turn 结束，所以同步等待终态。
    * settle 仍然固化结果供 duplicate 重放。
    */
+  /**
+   * CLI 进程内自建会话的命令入口（CreateSession 的 SessionSpawnPort）：与外部命令同一条
+   * inbox/admission/执行链，只是调用方不经 stdio。返回完整 ACK 供调用方分类失败。
+   */
+  executeSpawnCommand(rawParams: unknown): Promise<CommandAck> {
+    return this.handleCommand(rawParams);
+  }
+
   async handleCommand(rawParams: unknown): Promise<CommandAck> {
     let ttftCapacityRejected = false;
     const ttftCommand =

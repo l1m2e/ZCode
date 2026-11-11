@@ -10,6 +10,7 @@ import {
 
 import {
   AMEND_WORKFLOW_TOOL_NAME,
+  CREATE_SESSION_TOOL_NAME,
   CREATE_WORKFLOW_TOOL_NAME,
   EVAL_WORKFLOW_SNIPPET_TOOL_NAME,
   FILL_WORKFLOW_HOLE_TOOL_NAME,
@@ -54,6 +55,7 @@ import {
 } from "./cron.js";
 import { offPeakCreateToolEntry, offPeakListToolEntry } from "./off-peak.js";
 import { searchPluginsToolEntry, suggestPluginInstallToolEntry } from "./plugin-discovery.js";
+import { createSessionToolEntry } from "./session-create.js";
 import {
   createEnterPlanModeToolEntry,
   enterPlanModeToolEntry,
@@ -108,6 +110,7 @@ export const builtInTools: ToolEntry[] = [
   cronPauseSelfToolEntry,
   offPeakCreateToolEntry,
   offPeakListToolEntry,
+  createSessionToolEntry,
   enterPlanModeToolEntry,
   exitPlanModeToolEntry,
   askUserQuestionToolEntry,
@@ -212,6 +215,8 @@ interface RegisterBuiltInToolsOptions {
   includeOffPeak?: boolean;
   /** 注入了 topicResourcePort（App 托管会话）才注册 ReadTopicResource；机器人授权在调用时校验。 */
   includeTopicResource?: boolean;
+  /** CreateSession 会话内创建工具面；端口在场即注册（spawned_thread 会话不注入端口）。 */
+  includeSessionCreate?: boolean;
   /**
    * 动态工作流灰度门。**只有显式 false
    * 才下架** DYNAMIC_WORKFLOW_TOOL_NAMES：缺席代表调用方不参与灰度（TUI、headless、
@@ -309,6 +314,9 @@ export function registerBuiltInTools(
       (entry.metadata.name === "OffPeakCreate" || entry.metadata.name === "OffPeakList") &&
       options.includeOffPeak !== true
     ) {
+      continue;
+    }
+    if (entry.metadata.name === CREATE_SESSION_TOOL_NAME && options.includeSessionCreate !== true) {
       continue;
     }
     if (
