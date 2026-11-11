@@ -6,7 +6,7 @@
       "file": "apps/zcode-cli/packages/contracts/src/tools/session-create.ts",
       "module": "zcode-cli",
       "detail": "zcode-cli",
-      "message": "新文件落在未受管模块 zcode-cli；请放入 managed 模块，或用 pnpm architecture:adopt <id> --root <dir> 为它所在目录登记模块",
+      "message": "\u65b0\u6587\u4ef6\u843d\u5728\u672a\u53d7\u7ba1\u6a21\u5757 zcode-cli\uff1b\u8bf7\u653e\u5165 managed \u6a21\u5757\uff0c\u6216\u7528 pnpm architecture:adopt <id> --root <dir> \u4e3a\u5b83\u6240\u5728\u76ee\u5f55\u767b\u8bb0\u6a21\u5757",
       "fingerprint": "1685863fb8ea89b7",
       "global": false
     },
@@ -15,7 +15,7 @@
       "file": "apps/zcode-cli/packages/contracts/src/interfaces/session-spawn.port.ts",
       "module": "zcode-cli",
       "detail": "zcode-cli",
-      "message": "新文件落在未受管模块 zcode-cli；请放入 managed 模块，或用 pnpm architecture:adopt <id> --root <dir> 为它所在目录登记模块",
+      "message": "\u65b0\u6587\u4ef6\u843d\u5728\u672a\u53d7\u7ba1\u6a21\u5757 zcode-cli\uff1b\u8bf7\u653e\u5165 managed \u6a21\u5757\uff0c\u6216\u7528 pnpm architecture:adopt <id> --root <dir> \u4e3a\u5b83\u6240\u5728\u76ee\u5f55\u767b\u8bb0\u6a21\u5757",
       "fingerprint": "274680921ac244f6",
       "global": false
     },
@@ -24,7 +24,7 @@
       "file": "packages/ui/src/ToolCallBlocks/renderers/session-create.tsx",
       "module": "ui",
       "detail": "ui",
-      "message": "新文件落在未受管模块 ui；请放入 managed 模块，或用 pnpm architecture:adopt <id> --root <dir> 为它所在目录登记模块",
+      "message": "\u65b0\u6587\u4ef6\u843d\u5728\u672a\u53d7\u7ba1\u6a21\u5757 ui\uff1b\u8bf7\u653e\u5165 managed \u6a21\u5757\uff0c\u6216\u7528 pnpm architecture:adopt <id> --root <dir> \u4e3a\u5b83\u6240\u5728\u76ee\u5f55\u767b\u8bb0\u6a21\u5757",
       "fingerprint": "4c5cb30ee787ad43",
       "global": false
     },
@@ -33,7 +33,7 @@
       "file": "packages/shared/src/off-peak-execution.ts",
       "module": "shared",
       "detail": "shared",
-      "message": "新文件落在未受管模块 shared；请放入 managed 模块，或用 pnpm architecture:adopt <id> --root <dir> 为它所在目录登记模块",
+      "message": "\u65b0\u6587\u4ef6\u843d\u5728\u672a\u53d7\u7ba1\u6a21\u5757 shared\uff1b\u8bf7\u653e\u5165 managed \u6a21\u5757\uff0c\u6216\u7528 pnpm architecture:adopt <id> --root <dir> \u4e3a\u5b83\u6240\u5728\u76ee\u5f55\u767b\u8bb0\u6a21\u5757",
       "fingerprint": "7664201d9ddbd7e0",
       "global": false
     },
@@ -42,7 +42,7 @@
       "file": "apps/zcode-cli/packages/bootstrap/src/zcode-protocol/session-spawn-port.ts",
       "module": "zcode-cli",
       "detail": "zcode-cli",
-      "message": "新文件落在未受管模块 zcode-cli；请放入 managed 模块，或用 pnpm architecture:adopt <id> --root <dir> 为它所在目录登记模块",
+      "message": "\u65b0\u6587\u4ef6\u843d\u5728\u672a\u53d7\u7ba1\u6a21\u5757 zcode-cli\uff1b\u8bf7\u653e\u5165 managed \u6a21\u5757\uff0c\u6216\u7528 pnpm architecture:adopt <id> --root <dir> \u4e3a\u5b83\u6240\u5728\u76ee\u5f55\u767b\u8bb0\u6a21\u5757",
       "fingerprint": "8b2224a60968bda0",
       "global": false
     },
@@ -51,8 +51,17 @@
       "file": "apps/zcode-cli/packages/core/src/subagent/spawned-thread-notification.ts",
       "module": "zcode-cli",
       "detail": "zcode-cli",
-      "message": "新文件落在未受管模块 zcode-cli；请放入 managed 模块，或用 pnpm architecture:adopt <id> --root <dir> 为它所在目录登记模块",
+      "message": "\u65b0\u6587\u4ef6\u843d\u5728\u672a\u53d7\u7ba1\u6a21\u5757 zcode-cli\uff1b\u8bf7\u653e\u5165 managed \u6a21\u5757\uff0c\u6216\u7528 pnpm architecture:adopt <id> --root <dir> \u4e3a\u5b83\u6240\u5728\u76ee\u5f55\u767b\u8bb0\u6a21\u5757",
       "fingerprint": "8e279f69d2276832",
+      "global": false
+    },
+    {
+      "rule": "unmanaged-new-file",
+      "file": "packages/ui/src/lib/diffsHighlighterEngine.ts",
+      "module": "ui",
+      "detail": "ui",
+      "message": "\u65b0\u6587\u4ef6\u843d\u5728\u672a\u53d7\u7ba1\u6a21\u5757 ui\uff1b\u8bf7\u653e\u5165 managed \u6a21\u5757\uff0c\u6216\u7528 pnpm architecture:adopt <id> --root <dir> \u4e3a\u5b83\u6240\u5728\u76ee\u5f55\u767b\u8bb0\u6a21\u5757",
+      "fingerprint": "c001605401b5b9a3",
       "global": false
     },
     {
@@ -60,7 +69,7 @@
       "file": "packages/ui/src/app-shell/SideChatPane.tsx",
       "module": "ui",
       "detail": "ui",
-      "message": "新文件落在未受管模块 ui；请放入 managed 模块，或用 pnpm architecture:adopt <id> --root <dir> 为它所在目录登记模块",
+      "message": "\u65b0\u6587\u4ef6\u843d\u5728\u672a\u53d7\u7ba1\u6a21\u5757 ui\uff1b\u8bf7\u653e\u5165 managed \u6a21\u5757\uff0c\u6216\u7528 pnpm architecture:adopt <id> --root <dir> \u4e3a\u5b83\u6240\u5728\u76ee\u5f55\u767b\u8bb0\u6a21\u5757",
       "fingerprint": "c70d4545acd8783a",
       "global": false
     },
@@ -69,7 +78,7 @@
       "file": "apps/zcode-cli/packages/core/src/tool/handlers/session-create.ts",
       "module": "zcode-cli",
       "detail": "zcode-cli",
-      "message": "新文件落在未受管模块 zcode-cli；请放入 managed 模块，或用 pnpm architecture:adopt <id> --root <dir> 为它所在目录登记模块",
+      "message": "\u65b0\u6587\u4ef6\u843d\u5728\u672a\u53d7\u7ba1\u6a21\u5757 zcode-cli\uff1b\u8bf7\u653e\u5165 managed \u6a21\u5757\uff0c\u6216\u7528 pnpm architecture:adopt <id> --root <dir> \u4e3a\u5b83\u6240\u5728\u76ee\u5f55\u767b\u8bb0\u6a21\u5757",
       "fingerprint": "ffa80ed6cfffdf06",
       "global": false
     }
