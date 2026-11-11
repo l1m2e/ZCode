@@ -124,6 +124,7 @@
   "packages/desktop/test/remoteToolExecutionEvidence.test.ts",
   "packages/desktop/test/run-production-build.test.ts",
   "packages/desktop/test/sharpComputerUseRequirement.test.ts",
+  "packages/desktop/test/sidePaneSideChatTabs.test.ts",
   "packages/desktop/test/signWindowsHook.test.ts",
   "packages/desktop/test/sourceServerReleaseFaults.test.ts",
   "packages/desktop/test/sourceServerUpdateFixture.test.ts",

@@ -44,6 +44,8 @@ import {
   openSubagentSessionSidePane,
   openSubagentDirectorySidePane,
   openSelectionSideChatPane,
+  openSideChatPane,
+  setSideChatPaneSession,
   openPlanDetailSidePane,
   openWorkflowRunSidePane,
   replaceWorkflowRunSidePane,
@@ -89,6 +91,7 @@ import {
   openBackgroundBashSidePane,
   type OpenScopedSubagentDirectorySideTabRequest,
   type OpenSelectionSideChatRequest,
+  type OpenSideChatRequest,
   type OpenScopedPlanDetailSideTabRequest,
   type OpenScopedWorkflowRunSideTabRequest,
   type OpenScopedWorkflowRunDirectorySideTabRequest,
@@ -1413,6 +1416,25 @@ export function useAppPanels(options: {
     [commitOpenedSidePaneState, revealSidePaneForCurrentOwner],
   );
 
+  const handleOpenSideChat = useCallback(
+    (request: OpenSideChatRequest) => {
+      const workspaceKey = request.workspaceIdentity?.trim() || request.workspacePath;
+      revealSidePaneForCurrentOwner();
+      commitOpenedSidePaneState((current) =>
+        openSideChatPane(current, { ...request, workspaceKey }),
+      );
+      logger.debug("[App] 打开独立侧边会话", { workspaceKey });
+    },
+    [commitOpenedSidePaneState, revealSidePaneForCurrentOwner],
+  );
+
+  const handleSideChatSessionCreated = useCallback(
+    (tabId: string, sessionId: string) => {
+      commitOpenedSidePaneState((current) => setSideChatPaneSession(current, tabId, sessionId));
+    },
+    [commitOpenedSidePaneState],
+  );
+
   const handleOpenPlanDetail = useCallback(
     (request: OpenScopedPlanDetailSideTabRequest) => {
       const workspaceKey = request.workspaceIdentity?.trim() || request.workspacePath;
@@ -2145,6 +2167,8 @@ export function useAppPanels(options: {
     handleOpenSubagentDirectory,
     handleSyncSubagentSessionTabs,
     handleOpenSelectionSideChat,
+    handleOpenSideChat,
+    handleSideChatSessionCreated,
     handleOpenPlanDetail,
     handleOpenPluginUi,
     handleOpenWorkflowRun,

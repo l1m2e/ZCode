@@ -6,6 +6,7 @@ export const SITES_PLUGIN_ID = "zcode-site@zcode-plugins-official";
 export type OpenTabLauncherItemId =
   | "sites"
   | "selection-side-conversation"
+  | "side-chat"
   | "files"
   | "review"
   | "terminal"
@@ -16,12 +17,14 @@ export function resolveOpenTabLauncherItemIds({
   developerToolsEnabled,
   hasReviewTab,
   canOpenSelectionSideConversation = false,
+  canOpenSideChat = false,
   canOpenSites = false,
   supportsEmbeddedBrowser = true,
 }: {
   developerToolsEnabled: boolean;
   hasReviewTab: boolean;
   canOpenSelectionSideConversation?: boolean;
+  canOpenSideChat?: boolean;
   canOpenSites?: boolean;
   supportsEmbeddedBrowser?: boolean;
 }): OpenTabLauncherItemId[] {
@@ -46,11 +49,26 @@ export function resolveOpenTabLauncherItemIds({
     itemIds.push("selection-side-conversation");
   }
 
+  // 独立侧边会话不依赖 activeTaskId（草稿态主区也可发起），只受移动端形态门禁。
+  if (canOpenSideChat) {
+    itemIds.push("side-chat");
+  }
+
   if (developerToolsEnabled) {
     itemIds.push("developer-tools");
   }
 
   return itemIds;
+}
+
+export function shouldOfferSideChat({
+  isMobileTextInputViewport,
+  mobileOverlay,
+}: {
+  isMobileTextInputViewport: boolean;
+  mobileOverlay: boolean;
+}): boolean {
+  return !mobileOverlay && !isMobileTextInputViewport;
 }
 
 export function shouldOfferSelectionSideConversation({

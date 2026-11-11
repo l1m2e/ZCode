@@ -90,6 +90,9 @@ export const zcodeSessionKindSchema = z.enum([
   "workflow_child",
   "subagent_child",
   "nested_workflow_child",
+  // CreateSession 工具派生的顶层会话线程：侧栏可见、可继续输入，与 contracts
+  // SESSION_TASK_TYPES 同步；既非辅助会话也非只读子会话。
+  "spawned_thread",
 ]);
 // 修复原因：只识别 subagent_child 会漏掉工作流与辅助对话的父归属、隐藏索引规则。
 // fork 和 workflow_parent 是独立任务，即使有 parentSessionId 也不能沿父链改写项目。

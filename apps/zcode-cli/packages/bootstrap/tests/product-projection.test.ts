@@ -1506,6 +1506,80 @@ describe("ProductProjection 黄金测试（L1）", () => {
     });
   });
 
+  it("spawned_thread 通知不回写 CreateSession 行：output 保持 sessionId JSON，轮尾卡可解析", () => {
+    // 回归（21-session-create.md「通知投递」）：通知结算本会把 tool-use-id 命中的行
+    // output 覆盖成通知文本，CreateSession 行的创建时快照（sessionId JSON）被冲掉后
+    // UI 轮尾卡解析不到 id 直接消失。派生行的终态在 ToolCallResult 就已权威，子会话
+    // 首轮结果由通知轮自身承载，不落在派生动作的行上。
+    const toolCallId = "tool-create-session";
+    const createOutput = JSON.stringify({
+      sessionId: "sess-child-1",
+      title: "侧边会话派生测试",
+      message: "Created session thread",
+    });
+    const notification = [
+      "<task-notification>",
+      `  <task-id>sess-child-1</task-id>`,
+      `  <tool-use-id>${toolCallId}</tool-use-id>`,
+      "  <task-type>spawned_thread</task-type>",
+      "  <status>completed</status>",
+      "  <summary>Session thread finished its first turn.</summary>",
+      "  <result>1. 已成功启动。2. 分支是 personal-mods。</result>",
+      "</task-notification>",
+    ].join("\n");
+    const log = new EventLog();
+    log.push(SessionEventType.SessionCreated, { mode: "default", contextWindow: 1000 });
+    log.push(
+      SessionEventType.TurnStarted,
+      { turnNumber: 1, input: "帮我派生一个新会话", messageId: "user-spawn-1" },
+      { turnId: "turn-spawn-launch" },
+    );
+    log.push(
+      SessionEventType.ToolCallScheduled,
+      {
+        toolCallId,
+        toolName: "CreateSession",
+        input: { prompt: "测试", title: "侧边会话派生测试" },
+        schedule: { parallelGroups: [[toolCallId]], executionOrder: [toolCallId] },
+      },
+      { turnId: "turn-spawn-launch" },
+    );
+    log.push(
+      SessionEventType.ToolCallStarted,
+      { toolCallId, toolName: "CreateSession", startedAt: new Date(1_700_000_003_000) },
+      { turnId: "turn-spawn-launch" },
+    );
+    log.push(
+      SessionEventType.ToolCallResult,
+      { toolCallId, result: { success: true, content: createOutput }, duration: 268 },
+      { turnId: "turn-spawn-launch" },
+    );
+    log.push(
+      SessionEventType.TurnComplete,
+      { response: "已创建", tokenCount: 10, toolCallCount: 1, duration: 1_000, resultType: "success" },
+      { turnId: "turn-spawn-launch" },
+    );
+    log.push(
+      SessionEventType.TurnStarted,
+      {
+        turnNumber: 2,
+        input: notification,
+        inputSource: "background_task",
+        inputVisibility: "model-only",
+        messageId: "user-spawn-notification",
+      },
+      { turnId: "turn-spawn-notification" },
+    );
+
+    const row = runAll(log.events)
+      .projection.getSnapshot()
+      .rows.window.find((candidate) => candidate.kind === "toolCall" && candidate.toolCallId === toolCallId);
+    expect(row).toMatchObject({
+      status: "success",
+      output: { text: createOutput },
+    });
+  });
+
   it("BG26：不带 <error> 的失败通知按 originMeta.subagentResult 取失败原因，不解析 summary", () => {
     const turnId = "turn-agent-launch";
     const toolCallId = "tool-agent-rate-limit";

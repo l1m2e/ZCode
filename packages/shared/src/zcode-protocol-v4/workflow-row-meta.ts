@@ -113,9 +113,10 @@ export const subagentResultMetaSchema = z.object({
 });
 
 export const backgroundResultOriginMetaSchema = z.object({
-  // 三个取值与 contracts 的 BackgroundResultOriginMeta 保持同步。
-  // "workflow" 是 dynamic-workflow run（workId ≡ runId），复用整条后台通知管线。
-  backgroundSource: z.enum(["bash", "subagent", "workflow"]),
+  // 四个取值与 contracts 的 BackgroundResultOriginMeta 保持同步。
+  // "workflow" 是 dynamic-workflow run（workId ≡ runId），复用整条后台通知管线；
+  // "spawned_thread" 是 CreateSession 派生会话的首轮结算通知。
+  backgroundSource: z.enum(["bash", "subagent", "workflow", "spawned_thread"]),
   workId: z.string().min(1),
   title: z.string().min(1),
   // 只在 backgroundSource === "workflow" 的单条通知轮上在场；zod 剥离未知键，

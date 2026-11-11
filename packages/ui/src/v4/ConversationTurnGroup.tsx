@@ -53,6 +53,12 @@ import {
   readOffPeakCreateTaskSummary,
   type OffPeakCreateTaskSummary,
 } from "@/ToolCallBlocks/renderers/offpeak-create.js";
+import {
+  isSessionCreateToolCall,
+  readSessionCreateSummary,
+  SessionCreateThreadCard,
+  type SessionCreateSummary,
+} from "@/ToolCallBlocks/renderers/session-create.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { HighspeedShareDialog } from "@/highspeed/HighspeedShareNoticeCard.js";
 import { isHighspeedShareEligible } from "@/highspeed/highspeedShare.js";
@@ -138,6 +144,12 @@ interface OffPeakTurnCard {
   rowId: number;
   toolCallId: string;
   task: OffPeakCreateTaskSummary;
+}
+
+interface SessionCreateTurnCard {
+  rowId: number;
+  toolCallId: string;
+  session: SessionCreateSummary;
 }
 
 const MIN_VISIBLE_API_RETRY_ATTEMPT = 3;
@@ -531,6 +543,63 @@ function OffPeakTurnCards({
           key={`${card.rowId}:${card.toolCallId}`}
           task={card.task}
           onOpenAutomationsMain={context.onOpenAutomationsMain}
+        />
+      ))}
+    </div>
+  );
+}
+
+// 只收本轮 status==="success" 的 CreateSession；同 id 重复输出保留最新一次。
+function resolveSessionCreateTurnCards(rows: readonly AssistantWorkRow[]): SessionCreateTurnCard[] {
+  let cards: SessionCreateTurnCard[] = [];
+
+  for (const row of rows) {
+    if (row.kind !== "toolCall" || row.status !== "success") {
+      continue;
+    }
+    const node = toolCallRowToLegacyNode(row);
+    if (!isSessionCreateToolCall(node.toolCall)) {
+      continue;
+    }
+    const session = readSessionCreateSummary(node.toolCall);
+    if (!session) {
+      continue;
+    }
+    if (session.sessionId) {
+      cards = cards.filter((card) => card.session.sessionId !== session.sessionId);
+    }
+    cards.push({
+      rowId: row.rowId,
+      toolCallId: row.toolCallId,
+      session,
+    });
+  }
+
+  return cards;
+}
+
+function SessionCreateTurnCards({
+  cards,
+  context,
+}: {
+  cards: readonly SessionCreateTurnCard[];
+  context: ConversationRowRenderContext;
+}) {
+  if (cards.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {cards.map((card) => (
+        <SessionCreateThreadCard
+          key={`${card.rowId}:${card.toolCallId}`}
+          session={card.session}
+          onOpenSession={
+            context.onNavigateToRow
+              ? (sessionId) => context.onNavigateToRow?.(sessionId, 0)
+              : undefined
+          }
         />
       ))}
     </div>
@@ -987,6 +1056,8 @@ const BACKGROUND_RESULT_TITLE_SOURCES: ReadonlySet<string> = new Set([
   "bash",
   "subagent",
   "workflow",
+  // CreateSession 派生会话的首轮结算通知，标题由 CLI 权威给出（子会话标题）。
+  "spawned_thread",
 ]);
 
 function resolveBackgroundResultTitle(unit: ConversationTurnRenderUnit): string | undefined {
@@ -1400,6 +1471,10 @@ function ConversationTurnGroupImpl({
     () => (unit.isRunning ? [] : resolveOffPeakTurnCards(unit.assistantWorkRows)),
     [unit.assistantWorkRows, unit.isRunning],
   );
+  const sessionCreateTurnCards = useMemo(
+    () => (unit.isRunning ? [] : resolveSessionCreateTurnCards(unit.assistantWorkRows)),
+    [unit.assistantWorkRows, unit.isRunning],
+  );
   const canRenderAssistantActions =
     !unit.timelineOnly &&
     latestAssistantTextRow?.state === "complete" &&
@@ -1568,6 +1643,7 @@ function ConversationTurnGroupImpl({
               完成后的结果摘要，必须等回复结束再跟随最终 assistant 正文收尾。 */}
             <CronAutomationTurnCards cards={cronAutomationTurnCards} context={context} />
             <OffPeakTurnCards cards={offPeakTurnCards} context={context} />
+            <SessionCreateTurnCards cards={sessionCreateTurnCards} context={context} />
             {!isOfficeMode && unit.header?.fileChanges ? (
               <ConversationFileSummaryPanel
                 header={unit.header}

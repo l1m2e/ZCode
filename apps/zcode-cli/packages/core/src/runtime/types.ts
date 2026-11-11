@@ -81,6 +81,7 @@ import type {
   ExecutionShellSelection,
   AutomationPort,
   OffPeakPort,
+  SessionSpawnPort,
   TopicResourcePort,
   PluginDiscoveryPort,
   FileSystemPort,
@@ -435,6 +436,8 @@ export interface AgentRuntimeDeps {
   sessionControl?: SessionControlBinding;
   automationPort?: AutomationPort;
   offPeakPort?: OffPeakPort;
+  /** CreateSession 的进程内建会话端口（bootstrap 注入；缺席则工具不注册）。 */
+  sessionSpawnPort?: SessionSpawnPort;
   topicResourcePort?: TopicResourcePort;
   pluginDiscoveryPort?: PluginDiscoveryPort;
   contextSourcePort?: ContextSourcePort;

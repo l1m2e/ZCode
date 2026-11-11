@@ -136,6 +136,10 @@ import { createProtocolInteractionBroker } from "./interaction-broker.js";
 import { createProtocolAutomationPort } from "./automation-port.js";
 import { createAppSessionControlBinding } from "../session-control/index.js";
 import { createProtocolOffPeakPort } from "./offpeak-port.js";
+import {
+  createSessionSpawnPort,
+  drainSpawnedThreadPendingNotifications,
+} from "./session-spawn-port.js";
 import { createProtocolTopicResourcePort } from "./topic-resource-port.js";
 import { createProtocolBrowserControlBroker } from "./browser-control-broker.js";
 import { mapComputerUseOperationEvent } from "./computer-use-operation-event.js";
@@ -3926,6 +3930,7 @@ async function createRecord(
     context.appRuntimePreferences.offPeakToolEnabled === true
       ? { offPeakPort: createProtocolOffPeakPort(context, () => ownSessionRecord) }
       : {}),
+    sessionSpawnPort: createSessionSpawnPort(context, () => ownSessionRecord),
     resolveInitialBashShellSelection: startupPreferences.resolveInitialBashShellSelection,
     // 修复：这里曾按 workspace 身份排除远程，远端 Host 有快照也接不上，推送的子智能体要新建 task 才能用。
     // 是否接入只看持有本 stdio 的 Host 声明的能力。
@@ -4014,6 +4019,18 @@ async function createRecord(
   );
   // 绑定归属会话，供 automation-port 读取本会话实时 model/mode/thought。
   ownSessionRecord = record;
+  // CreateSession 的 SessionSpawnPort 随 record 注入（端口在场即注册工具面；
+  // spawned_thread 会话经 create 参数 toolDenylist 与 core 门控双重排除）。
+  // spawned_thread pending 通知补发：子会话首轮结算时父会话未加载则通知落
+  // session_entry；父会话本次加载（create 无 pending，drain 为空操作）一次性补发。
+  void drainSpawnedThreadPendingNotifications(context, record.app.sessionId).catch((error) => {
+    context.logger?.warn("spawned thread pending notification drain failed", {
+      error: error instanceof Error ? error.message : String(error),
+      event: "zcode_protocol.session_spawn.drain_failed",
+      module: "bootstrap.zcode_protocol",
+      sessionId: record.app.sessionId,
+    });
+  });
   return record;
 }
 

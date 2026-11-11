@@ -15,6 +15,7 @@ import {
   FileCode2Icon,
   FileDiffIcon,
   MapIcon,
+  SquarePenIcon,
   MessageSquareTextIcon,
   ListTreeIcon,
   PlugIcon,
@@ -316,6 +317,9 @@ export function SidePaneTabIcon({ tab }: { tab: WorkspaceSidePaneTab }) {
   if (tab.type === "selection-side-chat") {
     return <MessageSquareTextIcon className="size-3.5" />;
   }
+  if (tab.type === "side-chat") {
+    return <SquarePenIcon className="size-3.5" />;
+  }
   if (tab.type === "subagent-session") {
     return <SubagentTabAvatar tab={tab} />;
   }
@@ -531,6 +535,9 @@ export function getSidePaneTabTitle(
   }
   if (tab.type === "selection-side-chat") {
     return `${formatMessage({ id: "sidePane.selectionChat" })} ${tab.ordinal}`;
+  }
+  if (tab.type === "side-chat") {
+    return `${formatMessage({ id: "sidePane.sideChat" })} ${tab.ordinal}`;
   }
   if (tab.type === "subagent-session") {
     return tab.title?.trim() || formatMessage({ id: "sidePane.subagent" });

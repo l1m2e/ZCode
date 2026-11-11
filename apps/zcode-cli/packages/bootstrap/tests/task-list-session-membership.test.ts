@@ -16,6 +16,8 @@ describe("task-list session membership", () => {
       subagent_child: false,
       workflow_child: false,
       workflow_parent: true,
+      // CreateSession 派生的顶层会话线程是侧栏普通任务（21-session-create.md）。
+      spawned_thread: true,
     });
   });
 
