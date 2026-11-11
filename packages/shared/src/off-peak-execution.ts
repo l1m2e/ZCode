@@ -66,7 +66,7 @@ export type OffPeakControlResult = z.infer<typeof offPeakControlResultSchema>;
 export const OFF_PEAK_EXECUTION_TOOL_DENYLIST = [
   "OffPeakCreate",
   // 闲时轮不得派生顶层会话线程（21-session-create.md）；通知归属只属于交互会话。
-  "CreateSession",
+  "SpawnSession",
   "Workflow",
   "CreateWorkflow",
   "AmendWorkflow",

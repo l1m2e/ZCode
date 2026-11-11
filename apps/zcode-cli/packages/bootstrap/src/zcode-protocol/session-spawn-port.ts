@@ -10,7 +10,7 @@
 
 import { randomUUID } from "node:crypto";
 import {
-  CREATE_SESSION_TOOL_NAME,
+  SPAWN_SESSION_TOOL_NAME,
   type SessionId,
   type SessionSpawnOutcome,
   type SessionSpawnPort,
@@ -107,7 +107,7 @@ export function createSessionSpawnPort(
         workspaceId: parentRecord.workspace.workspaceKey,
         taskType: "spawned_thread",
         parentSessionId: parentRecord.app.sessionId,
-        toolDenylist: [CREATE_SESSION_TOOL_NAME],
+        toolDenylist: [SPAWN_SESSION_TOOL_NAME],
         firstInput: { text: request.prompt },
       };
       const gateway = context.v4Gateway;

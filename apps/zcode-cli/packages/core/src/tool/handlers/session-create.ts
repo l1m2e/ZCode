@@ -9,7 +9,7 @@
 
 import {
   CoreErrorType,
-  CREATE_SESSION_TOOL_NAME,
+  SPAWN_SESSION_TOOL_NAME,
   CreateSessionInputJsonSchema,
   CreateSessionInputSchema,
   CreateSessionOutputJsonSchema,
@@ -33,11 +33,11 @@ function assertSessionSpawnPort(
   if (context.sessionSpawnPort) return;
   throw createCoreError(
     CoreErrorType.ConfigurationError,
-    `SessionSpawnPort is not configured for ${CREATE_SESSION_TOOL_NAME}`,
+    `SessionSpawnPort is not configured for ${SPAWN_SESSION_TOOL_NAME}`,
     {
       context: {
         toolCallId: context.toolCallId,
-        toolName: CREATE_SESSION_TOOL_NAME,
+        toolName: SPAWN_SESSION_TOOL_NAME,
       },
       recoverable: false,
     },
@@ -52,11 +52,11 @@ function assertNotSpawnedThreadSession(context: ToolExecutionContext): void {
   if (context.taskType !== "spawned_thread") return;
   throw createCoreError(
     CoreErrorType.PermissionDenied,
-    `${CREATE_SESSION_TOOL_NAME} is not allowed inside a spawned session thread. Continue the work in this session, or ask the user to open a new chat.`,
+    `${SPAWN_SESSION_TOOL_NAME} is not allowed inside a spawned session thread. Continue the work in this session, or ask the user to open a new chat.`,
     {
       context: {
         toolCallId: context.toolCallId,
-        toolName: CREATE_SESSION_TOOL_NAME,
+        toolName: SPAWN_SESSION_TOOL_NAME,
       },
       recoverable: false,
       retryable: false,
@@ -80,7 +80,7 @@ function spawnFailureError(
       context: {
         errorCategory: outcome.errorCategory,
         toolCallId: context.toolCallId,
-        toolName: CREATE_SESSION_TOOL_NAME,
+        toolName: SPAWN_SESSION_TOOL_NAME,
       },
       recoverable,
       retryable: recoverable,
@@ -138,7 +138,7 @@ export const createSessionToolEntry: ToolEntry = {
   metadata: {
     // 与 cron/off-peak 同档：低频派生工具走 ToolSearch 延迟加载，不占常驻面。
     shouldDefer: true,
-    name: CREATE_SESSION_TOOL_NAME,
+    name: SPAWN_SESSION_TOOL_NAME,
     description:
       "Create a new independent session thread in the current workspace and start it running an initial task immediately. The new thread appears in the session list like a normal chat, inherits this session's model and permission mode, and keeps its own context. When its first turn settles you receive a background notification in this conversation. Use it to delegate a self-contained piece of work to a fresh context instead of overloading this one. The prompt must be complete and self-contained: the new thread cannot see this conversation. Never call this from inside a spawned thread.",
     modelInstructions: [

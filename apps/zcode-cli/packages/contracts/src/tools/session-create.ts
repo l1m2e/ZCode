@@ -1,5 +1,6 @@
 // ============================================================
-// CreateSession - agent-spawned top-level session thread
+// SpawnSession - agent-spawned top-level session thread（原名 CreateSession；2026-11-11 官方
+// v3.18.0 session-control 族新增同名 CreateSession（根会话+首条 prompt），为避让遮蔽而更名）
 // ============================================================
 // 模型在当前会话中发起一个顶层会话线程（侧栏可见、落盘、可继续对话）。
 // 子会话 taskType = spawned_thread，继承父会话模型选型与权限模式；
@@ -10,7 +11,7 @@ import { toToolJsonSchema } from "./json-schema.js";
 
 const nonEmptyString = z.string().trim().min(1);
 
-export const CREATE_SESSION_TOOL_NAME = "CreateSession";
+export const SPAWN_SESSION_TOOL_NAME = "SpawnSession";
 
 export const CreateSessionInputSchema = z
   .object({

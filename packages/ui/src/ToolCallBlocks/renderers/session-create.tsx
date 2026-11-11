@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import type { ToolCallBlockRenderContext } from "@/ToolCallBlocks/shared.js";
 
-// CreateSession 的静态轮尾卡（cron-create / offpeak-create 兄弟实现，样式契约一致）。
+// SpawnSession（原名 CreateSession）的静态轮尾卡（cron-create / offpeak-create 兄弟实现，样式契约一致）。
 // 卡片是创建时快照：子会话的运行状态由侧栏与通知承载，历史回看不产生过期活数据。
 
 export interface SessionCreateSummary {
@@ -24,7 +24,7 @@ export function isSessionCreateToolCall(
   toolCall: ToolCallBlockRenderContext["toolCallNode"]["toolCall"],
 ): boolean {
   return [toolCall.toolName, toolCall.kind, toolCall.title].some(
-    (value) => normalizeToolName(value) === "createsession",
+    (value) => normalizeToolName(value) === "spawnsession",
   );
 }
 

@@ -22,7 +22,7 @@ describe("buildTurnToolDisallowlist (off-peak, D49)", () => {
     expect(tools).toEqual([
       "OffPeakCreate",
       // CreateSession：闲时轮不得派生顶层会话线程（21-session-create.md）。
-      "CreateSession",
+      "SpawnSession",
       "Workflow",
       "CreateWorkflow",
       "AmendWorkflow",
@@ -114,7 +114,7 @@ describe("闲时 turn 清理与当前执行约束共存", () => {
           toolDisallowlist: [
             "OffPeakCreate",
             // CreateSession：闲时轮不得派生顶层会话线程（21-session-create.md）。
-            "CreateSession",
+            "SpawnSession",
             "Workflow",
             "CreateWorkflow",
             "AmendWorkflow",

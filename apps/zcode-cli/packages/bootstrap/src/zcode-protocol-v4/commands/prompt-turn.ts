@@ -424,7 +424,7 @@ const AUTOMATION_MUTATION_TOOL_NAMES = [
   "CronUpdate",
   "CronDelete",
   // automation 轮不得派生顶层会话线程：通知归属与侧栏语义只属于交互会话。
-  "CreateSession",
+  "SpawnSession",
 ] as const;
 // 独立常量，绝不并入 AUTOMATION_MUTATION_TOOL_NAMES（cron 轮放行 OffPeakCreate）。
 // 与 core turn-loop-state 同值——闲时轮同时隐藏 SendMessage / Workflow（两者会在本轮
