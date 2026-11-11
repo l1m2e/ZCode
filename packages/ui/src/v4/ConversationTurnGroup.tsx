@@ -549,7 +549,7 @@ function OffPeakTurnCards({
   );
 }
 
-// 只收本轮 status==="success" 的 CreateSession；同 id 重复输出保留最新一次。
+// 只收本轮 status==="success" 的 SpawnSession；同 id 重复输出保留最新一次。
 function resolveSessionCreateTurnCards(rows: readonly AssistantWorkRow[]): SessionCreateTurnCard[] {
   let cards: SessionCreateTurnCard[] = [];
 
@@ -1056,7 +1056,7 @@ const BACKGROUND_RESULT_TITLE_SOURCES: ReadonlySet<string> = new Set([
   "bash",
   "subagent",
   "workflow",
-  // CreateSession 派生会话的首轮结算通知，标题由 CLI 权威给出（子会话标题）。
+  // SpawnSession 派生会话的首轮结算通知，标题由 CLI 权威给出（子会话标题）。
   "spawned_thread",
 ]);
 

@@ -10,7 +10,7 @@ import {
 
 import {
   AMEND_WORKFLOW_TOOL_NAME,
-  CREATE_SESSION_TOOL_NAME,
+  SPAWN_SESSION_TOOL_NAME,
   CREATE_WORKFLOW_TOOL_NAME,
   EVAL_WORKFLOW_SNIPPET_TOOL_NAME,
   FILL_WORKFLOW_HOLE_TOOL_NAME,
@@ -316,7 +316,7 @@ export function registerBuiltInTools(
     ) {
       continue;
     }
-    if (entry.metadata.name === CREATE_SESSION_TOOL_NAME && options.includeSessionCreate !== true) {
+    if (entry.metadata.name === SPAWN_SESSION_TOOL_NAME && options.includeSessionCreate !== true) {
       continue;
     }
     if (

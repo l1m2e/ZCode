@@ -13,7 +13,7 @@ const APP_SESSION_TOOLS = [
   "ListProjects",
   "ListSessions",
   "ReadSession",
-  "CreateSession",
+  "SpawnSession",
   "ForkSession",
   "SendToSession",
   "WaitSessions",

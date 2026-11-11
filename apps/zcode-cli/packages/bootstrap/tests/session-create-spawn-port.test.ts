@@ -141,7 +141,7 @@ describe("createSessionSpawnPort", () => {
     expect(createEnvelope.payload).toMatchObject({
       taskType: "spawned_thread",
       parentSessionId: "sess-parent",
-      toolDenylist: ["CreateSession"],
+      toolDenylist: ["SpawnSession"],
       firstInput: { text: "核对 Mastra 实现" },
     });
     // 有 title → 追加 renameSession 信封

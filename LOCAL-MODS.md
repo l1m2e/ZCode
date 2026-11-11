@@ -150,6 +150,18 @@ ditto "packages/desktop/dist/mac-arm64/ZCode Preview.app" "/Applications/ZCode P
 - fmt 上游漂移：官方 v3.18.0 自带约 1553 个文件不满足新 `.oxfmtrc.json`（含
   architecture-policy.yaml 的 flow-map 空格风格）。fmt 不在门禁链内，**不代官方全量
   格式化**（会造成每次同步的无谓冲突），只保持个人新增内容整洁。
+- **命名冲突（本次同步最大的坑）**：官方 v3.18.0 session-control 工具族新增同名
+  `CreateSession`（创建根会话+首条 prompt，CLI/App 两变体）。`registerBuiltInTools`
+  里命中 `SESSION_CONTROL_TOOL_NAMES` 的内置项在未指定 sessionControlKind 时直接
+  `continue`——个人同名工具在真实运行时（CLI/App 都设 kind）被**静默遮蔽失效**，
+  仅 `session-create-tool.test.ts` 直连注册表的用例能暴露。经用户拍板，个人工具更名
+  **`SpawnSession`**（常量 `SPAWN_SESSION_TOOL_NAME`）：内部 schema/类型名
+  （`CreateSessionInputSchema` 等）与文件名（session-create.ts/tsx）保留不动，只改
+  工具身份面（常量、工具名值、15 处字面量、UI 归一化名 `spawnsession`、注释与
+  21-session-create.md）。automation / off-peak 禁用清单同步改名。
+  遗留观察：官方 CreateSession 本身未进 AUTOMATION_MUTATION_TOOL_NAMES /
+  OFF_PEAK_MUTATION_TOOL_NAMES——automation/off-peak 轮经官方工具建根会话是否该禁，
+  归官方规则管，个人分支不代管。
 
 ## 2026-10-30 同步（官方 3c5b2276 → a60ba6a7）冲突解法记录
 

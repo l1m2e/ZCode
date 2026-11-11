@@ -2672,7 +2672,7 @@ export class ProductProjection {
     // 本是 background Agent 的 launch-ACK 语义（BG26：launch ACK 只是占位，真实终态随通知
     // 到来）；套在 CreateSession 上会把 output 覆盖成子会话首轮的通知文本，sessionId 丢失、
     // 卡片消失。子会话状态由侧栏与通知轮承载（21-session-create.md「通知投递」）。
-    if (row.toolName === "CreateSession") return [];
+    if (row.toolName === "SpawnSession") return [];
 
     const notificationStatus = zcodeBackgroundTaskNotificationToolUpdateStatus(
       parsed.notification.status,
