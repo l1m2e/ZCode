@@ -124,6 +124,22 @@ export const commandPayloadSchemas = {
     dynamicWorkflowEnabled: z.boolean().optional(),
     // 灰度 mode 与布尔同行（launch.md「On demand: activation」）；旧 CLI 的 z.object 静默丢弃。
     dynamicWorkflowMode: z.enum(DYNAMIC_WORKFLOW_MODES).optional(),
+    // CreateSession 工具进程内建 spawned_thread 会话时下发（additive；旧 CLI 静默丢弃即
+    // 落回 interactive，工具面 deny 仍经 toolDenylist 生效）。与 legacy create 参数同域。
+    taskType: z
+      .enum([
+        "interactive",
+        "fork",
+        "selection_side_chat",
+        "workflow_parent",
+        "workflow_child",
+        "subagent_child",
+        "nested_workflow_child",
+        "spawned_thread",
+      ])
+      .optional(),
+    parentSessionId: z.string().min(1).optional(),
+    toolDenylist: z.array(z.string().min(1)).optional(),
   }),
   // 父会话由 envelope.sessionId 指定；服务端从父 record 派生完整运行配置。
   // firstInput 存在时，child 创建完成后立即启动首条普通输入；缺省则保持空副屏。

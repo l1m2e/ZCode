@@ -11,6 +11,8 @@ export const TASK_LIST_SESSION_TYPES = [
   "interactive",
   "fork",
   "workflow_parent",
+  // CreateSession 派生的顶层会话线程是侧栏普通任务（21-session-create.md）。
+  "spawned_thread",
 ] as const satisfies readonly SessionTaskType[];
 
 const TASK_LIST_SESSION_TYPE_SET = new Set<SessionTaskType>(

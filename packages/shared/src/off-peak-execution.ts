@@ -65,6 +65,8 @@ export type OffPeakControlResult = z.infer<typeof offPeakControlResultSchema>;
 /** 闲时允许 Agent/Bash/SendMessage；工作流运行器和递归派发尚不归本票据管理。 */
 export const OFF_PEAK_EXECUTION_TOOL_DENYLIST = [
   "OffPeakCreate",
+  // 闲时轮不得派生顶层会话线程（21-session-create.md）；通知归属只属于交互会话。
+  "CreateSession",
   "Workflow",
   "CreateWorkflow",
   "AmendWorkflow",

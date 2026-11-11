@@ -58,6 +58,7 @@ import { SidePaneTabOverview } from "@/app-shell/SidePaneTabOverview.js";
 import { SubagentSessionSidePane } from "@/app-shell/SubagentSessionSidePane.js";
 import { SubagentDirectorySidePane } from "@/app-shell/SubagentDirectorySidePane.js";
 import { SelectionSideChatPane } from "@/app-shell/SelectionSideChatPane.js";
+import { SideChatPane } from "@/app-shell/SideChatPane.js";
 import { BackgroundBashOutputSidePane } from "@/app-shell/BackgroundBashOutputSidePane.js";
 import { PlanDetailSidePane } from "@/app-shell/PlanDetailSidePane.js";
 import {
@@ -88,6 +89,7 @@ import {
   resolveAnimatedSidePanePanelLayout,
   resolveOpenTabLauncherItemIds,
   SITES_PLUGIN_ID,
+  shouldOfferSideChat,
   shouldOfferSelectionSideConversation,
   shouldRenderPreviewPaneHeavyContent,
   type OpenTabLauncherItemId,
@@ -123,6 +125,7 @@ import {
   FolderOpenIcon,
   EarthIcon,
   GlobeIcon,
+  SquarePenIcon,
   MessageSquareTextIcon,
   PlusIcon,
   SquareTerminalIcon,
@@ -354,6 +357,8 @@ export function AnimatedSidePanePanel({
   onOpenTerminalTab,
   onOpenReviewTab,
   onOpenSelectionSideConversation,
+  onOpenSideChat,
+  onSideChatSessionCreated,
   onRevealGitFileInTree,
   onOpenBrowserUrl,
   onOpenCodeViewer,
@@ -447,6 +452,8 @@ export function AnimatedSidePanePanel({
   onOpenTerminalTab: () => void;
   onOpenReviewTab: () => void;
   onOpenSelectionSideConversation: () => void;
+  onOpenSideChat: () => void;
+  onSideChatSessionCreated: (tabId: string, sessionId: string) => void;
   onRevealGitFileInTree?: (path: string) => void;
   onOpenBrowserUrl: (url: string) => void;
   onOpenCodeViewer: (source: CodeViewerSource) => void;
@@ -557,6 +564,8 @@ export function AnimatedSidePanePanel({
     isMobileTextInputViewport,
     mobileOverlay,
   });
+  // 独立侧边会话不要求 activeTaskId（草稿态主区也可发起）；只受移动端形态门禁。
+  const canOpenSideChat = shouldOfferSideChat({ isMobileTextInputViewport, mobileOverlay });
   // Sites 面板是会话级 UI 插件，和辅助对话同样需要正式会话；远端工作区不支持插件面板。
   const canOpenSites =
     canOpenSelectionSideConversation &&
@@ -765,6 +774,13 @@ export function AnimatedSidePanePanel({
       icon: MessageSquareTextIcon,
       onOpen: onOpenSelectionSideConversation,
     },
+    "side-chat": {
+      id: "side-chat",
+      label: intl.formatMessage({ id: "sidePane.sideChatLauncher" }),
+      description: intl.formatMessage({ id: "sidePane.launcher.sideChat" }),
+      icon: SquarePenIcon,
+      onOpen: onOpenSideChat,
+    },
     files: {
       id: "files",
       label: intl.formatMessage({ id: "fileManager.title" }),
@@ -803,6 +819,7 @@ export function AnimatedSidePanePanel({
   };
   const openTabLauncherItems: OpenTabLauncherItem[] = resolveOpenTabLauncherItemIds({
     canOpenSelectionSideConversation,
+    canOpenSideChat,
     canOpenSites,
     developerToolsEnabled,
     hasReviewTab,
@@ -1227,6 +1244,15 @@ export function AnimatedSidePanePanel({
                             onOpenCodeViewer={onOpenCodeViewer}
                             onOpenFileLink={onOpenFileLink}
                             onUnavailable={onCloseTab}
+                          />
+                        ) : tab.type === "side-chat" ? (
+                          <SideChatPane
+                            tab={tab}
+                            focused={isVisible && tab.id === contentActiveTabId}
+                            onOpenBrowserUrl={onOpenBrowserUrl}
+                            onOpenCodeViewer={onOpenCodeViewer}
+                            onOpenFileLink={onOpenFileLink}
+                            onSessionCreated={onSideChatSessionCreated}
                           />
                         ) : tab.type === "plugin-ui" ? (
                           <PluginUiSidePane

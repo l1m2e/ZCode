@@ -1,4 +1,77 @@
 {
   "version": 1,
-  "violations": []
+  "violations": [
+    {
+      "rule": "unmanaged-new-file",
+      "file": "apps/zcode-cli/packages/contracts/src/tools/session-create.ts",
+      "module": "zcode-cli",
+      "detail": "zcode-cli",
+      "message": "新文件落在未受管模块 zcode-cli；请放入 managed 模块，或用 pnpm architecture:adopt <id> --root <dir> 为它所在目录登记模块",
+      "fingerprint": "1685863fb8ea89b7",
+      "global": false
+    },
+    {
+      "rule": "unmanaged-new-file",
+      "file": "apps/zcode-cli/packages/contracts/src/interfaces/session-spawn.port.ts",
+      "module": "zcode-cli",
+      "detail": "zcode-cli",
+      "message": "新文件落在未受管模块 zcode-cli；请放入 managed 模块，或用 pnpm architecture:adopt <id> --root <dir> 为它所在目录登记模块",
+      "fingerprint": "274680921ac244f6",
+      "global": false
+    },
+    {
+      "rule": "unmanaged-new-file",
+      "file": "packages/ui/src/ToolCallBlocks/renderers/session-create.tsx",
+      "module": "ui",
+      "detail": "ui",
+      "message": "新文件落在未受管模块 ui；请放入 managed 模块，或用 pnpm architecture:adopt <id> --root <dir> 为它所在目录登记模块",
+      "fingerprint": "4c5cb30ee787ad43",
+      "global": false
+    },
+    {
+      "rule": "unmanaged-new-file",
+      "file": "packages/shared/src/off-peak-execution.ts",
+      "module": "shared",
+      "detail": "shared",
+      "message": "新文件落在未受管模块 shared；请放入 managed 模块，或用 pnpm architecture:adopt <id> --root <dir> 为它所在目录登记模块",
+      "fingerprint": "7664201d9ddbd7e0",
+      "global": false
+    },
+    {
+      "rule": "unmanaged-new-file",
+      "file": "apps/zcode-cli/packages/bootstrap/src/zcode-protocol/session-spawn-port.ts",
+      "module": "zcode-cli",
+      "detail": "zcode-cli",
+      "message": "新文件落在未受管模块 zcode-cli；请放入 managed 模块，或用 pnpm architecture:adopt <id> --root <dir> 为它所在目录登记模块",
+      "fingerprint": "8b2224a60968bda0",
+      "global": false
+    },
+    {
+      "rule": "unmanaged-new-file",
+      "file": "apps/zcode-cli/packages/core/src/subagent/spawned-thread-notification.ts",
+      "module": "zcode-cli",
+      "detail": "zcode-cli",
+      "message": "新文件落在未受管模块 zcode-cli；请放入 managed 模块，或用 pnpm architecture:adopt <id> --root <dir> 为它所在目录登记模块",
+      "fingerprint": "8e279f69d2276832",
+      "global": false
+    },
+    {
+      "rule": "unmanaged-new-file",
+      "file": "packages/ui/src/app-shell/SideChatPane.tsx",
+      "module": "ui",
+      "detail": "ui",
+      "message": "新文件落在未受管模块 ui；请放入 managed 模块，或用 pnpm architecture:adopt <id> --root <dir> 为它所在目录登记模块",
+      "fingerprint": "c70d4545acd8783a",
+      "global": false
+    },
+    {
+      "rule": "unmanaged-new-file",
+      "file": "apps/zcode-cli/packages/core/src/tool/handlers/session-create.ts",
+      "module": "zcode-cli",
+      "detail": "zcode-cli",
+      "message": "新文件落在未受管模块 zcode-cli；请放入 managed 模块，或用 pnpm architecture:adopt <id> --root <dir> 为它所在目录登记模块",
+      "fingerprint": "ffa80ed6cfffdf06",
+      "global": false
+    }
+  ]
 }

@@ -63,6 +63,10 @@ async function createSession(
     offPeakToolEnabled: payload.offPeakToolEnabled,
     dynamicWorkflowEnabled: payload.dynamicWorkflowEnabled,
     dynamicWorkflowMode: payload.dynamicWorkflowMode,
+    // CreateSession 进程内建 spawned_thread 会话：类型/父子/工具面 deny 随 create 一次进入。
+    ...(payload.taskType ? { taskType: payload.taskType } : {}),
+    ...(payload.parentSessionId ? { parentSessionId: payload.parentSessionId } : {}),
+    ...(payload.toolDenylist ? { toolDenylist: payload.toolDenylist } : {}),
   });
   if (payload.worktreeCreation) {
     // 首轮持久化会话后、TurnStarted 之前落盘并投影（docs/git/worktree.md §6.6.4）。

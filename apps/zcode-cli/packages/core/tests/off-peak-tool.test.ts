@@ -169,6 +169,8 @@ describe("闲时轮支持 SendMessage，保留 Workflow 与递归派发限制", 
   it("denylist 保留 OffPeakCreate、Workflow，且哨兵仍是 OffPeakCreate", () => {
     expect([...OFF_PEAK_MUTATION_TOOL_NAMES]).toEqual([
       "OffPeakCreate",
+      // CreateSession：闲时轮不得派生顶层会话线程（21-session-create.md）。
+      "CreateSession",
       "Workflow",
       "CreateWorkflow",
       "AmendWorkflow",

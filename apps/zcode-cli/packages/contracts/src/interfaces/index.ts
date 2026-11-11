@@ -9,6 +9,7 @@ export * from "./pdf-document.port.js";
 export * from "./permission.port.js";
 export * from "./session.port.js";
 export * from "./session-mailbox.port.js";
+export * from "./session-spawn.port.js";
 export * from "./session-store.port.js";
 export * from "./tool-artifact-store.port.js";
 export * from "./subagent.port.js";

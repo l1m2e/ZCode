@@ -40,6 +40,9 @@ export const SESSION_TASK_TYPES = [
   "workflow_child",
   "subagent_child",
   "nested_workflow_child",
+  // CreateSession 工具派生的顶层会话线程：侧栏可见、可继续输入；
+  // 与 shared zcodeSessionKindSchema 同域（21-session-create.md）。
+  "spawned_thread",
 ] as const;
 export type SessionTaskType = (typeof SESSION_TASK_TYPES)[number];
 

@@ -584,6 +584,8 @@ async function executeToolCallImpl(
         automationPort: deps.automationPort,
         offPeakPort: deps.offPeakPort,
         pluginDiscoveryPort: options?.pluginDiscoveryUi ? deps.pluginDiscoveryPort : undefined,
+        sessionSpawnPort: deps.sessionSpawnPort,
+        taskType: deps.sessionTaskType,
         topicResourcePort: deps.topicResourcePort,
         sessionStore: deps.sessionStore,
         sessionModePort: deps.sessionModePort,

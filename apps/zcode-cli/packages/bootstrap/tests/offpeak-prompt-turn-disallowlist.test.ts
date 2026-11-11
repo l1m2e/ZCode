@@ -21,6 +21,8 @@ describe("buildTurnToolDisallowlist (off-peak, D49)", () => {
     const tools = buildTurnToolDisallowlist({ offPeakTaskId: "offpeak-1" });
     expect(tools).toEqual([
       "OffPeakCreate",
+      // CreateSession：闲时轮不得派生顶层会话线程（21-session-create.md）。
+      "CreateSession",
       "Workflow",
       "CreateWorkflow",
       "AmendWorkflow",
@@ -35,7 +37,7 @@ describe("buildTurnToolDisallowlist (off-peak, D49)", () => {
       toolDisallowlist: ["CronCreate"],
     });
     expect(tools).toEqual(expect.arrayContaining(["CronCreate", "OffPeakCreate", "Workflow"]));
-    expect(tools).toHaveLength(7);
+    expect(tools).toHaveLength(8);
   });
 
   it("普通用户轮不追加任何隐藏", () => {
@@ -111,6 +113,8 @@ describe("闲时 turn 清理与当前执行约束共存", () => {
           offPeakTaskId: "current-id",
           toolDisallowlist: [
             "OffPeakCreate",
+            // CreateSession：闲时轮不得派生顶层会话线程（21-session-create.md）。
+            "CreateSession",
             "Workflow",
             "CreateWorkflow",
             "AmendWorkflow",

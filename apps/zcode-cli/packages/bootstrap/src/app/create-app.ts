@@ -1085,6 +1085,7 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
       sessionControl,
       automationPort: options.automationPort,
       offPeakPort: options.offPeakPort,
+      sessionSpawnPort: options.sessionSpawnPort,
       topicResourcePort: options.topicResourcePort,
       pluginDiscoveryPort: options.pluginDiscoveryPort,
       appVersion,

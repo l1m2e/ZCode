@@ -444,6 +444,8 @@ const WorkspaceShellLayoutContent = memo(function WorkspaceShellLayoutComponent(
   handleOpenSubagentDirectory,
   handleSyncSubagentSessionTabs,
   handleOpenSelectionSideChat,
+  handleOpenSideChat,
+  handleSideChatSessionCreated,
   handleOpenPlanDetail,
   handleOpenWorkflowRun,
   handleOpenWorkflowRunDirectory,
@@ -2292,6 +2294,14 @@ const WorkspaceShellLayoutContent = memo(function WorkspaceShellLayoutComponent(
       onOpenTerminalTab={handleOpenTerminalTab}
       onOpenReviewTab={handleToggleGit}
       onOpenSelectionSideConversation={handleOpenSelectionSideConversationLauncher}
+      onOpenSideChat={() =>
+        handleOpenSideChat({
+          workspacePath: workspaceAbsPath,
+          ...(workspaceIdentity ? { workspaceIdentity } : {}),
+          ...(workspaceRemoteSessionId ? { remoteSessionId: workspaceRemoteSessionId } : {}),
+        })
+      }
+      onSideChatSessionCreated={handleSideChatSessionCreated}
       onRevealGitFileInTree={handleRevealGitFileInTree}
       onOpenBrowserUrl={handleOpenBrowserUrl}
       onOpenCodeViewer={handleOpenCodeViewer}
