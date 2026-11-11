@@ -28,6 +28,7 @@ import type {
   OpenScopedSubagentSideTabRequest,
   OpenBackgroundBashSideTabRequest,
   OpenSelectionSideChatRequest,
+  OpenSideChatRequest,
   OpenScopedPlanDetailSideTabRequest,
   OpenScopedWorkflowRunSideTabRequest,
   OpenScopedWorkflowActorSessionSideTabRequest,
@@ -360,6 +361,8 @@ export interface WorkspaceShellLayoutProps extends Omit<AppProps, "baseFeedbackS
     request: import("@/lib/workspaceSidePane.js").SyncSubagentSessionTabsRequest,
   ) => void;
   handleOpenSelectionSideChat: (request: OpenSelectionSideChatRequest) => void;
+  handleOpenSideChat: (request: OpenSideChatRequest) => void;
+  handleSideChatSessionCreated: (tabId: string, sessionId: string) => void;
   handleOpenPlanDetail: (request: OpenScopedPlanDetailSideTabRequest) => void;
   handleOpenWorkflowRun: (request: OpenScopedWorkflowRunSideTabRequest) => void;
   handleOpenWorkflowRunDirectory: (

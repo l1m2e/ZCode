@@ -4,6 +4,7 @@ const SORTED_PROVIDER_TOOL_NAMES = new Set([
   "Agent",
   "AskUserQuestion",
   "Bash",
+  "CreateSession",
   "CronCreate",
   "CronDelete",
   "CronList",

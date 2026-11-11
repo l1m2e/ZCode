@@ -58,6 +58,10 @@ async function createSession(
     offPeakToolEnabled: payload.offPeakToolEnabled,
     dynamicWorkflowEnabled: payload.dynamicWorkflowEnabled,
     dynamicWorkflowMode: payload.dynamicWorkflowMode,
+    // CreateSession 进程内建 spawned_thread 会话：类型/父子/工具面 deny 随 create 一次进入。
+    ...(payload.taskType ? { taskType: payload.taskType } : {}),
+    ...(payload.parentSessionId ? { parentSessionId: payload.parentSessionId } : {}),
+    ...(payload.toolDenylist ? { toolDenylist: payload.toolDenylist } : {}),
   });
   // createSession.config 消费——草稿态 UI 的先行选择（模型/思考深度/
   // 模式）在首发之前应用并补发事件，首条 turn 即用所选配置。必须在 firstInput 之前。

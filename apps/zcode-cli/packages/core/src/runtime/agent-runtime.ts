@@ -74,6 +74,7 @@ import type {
   TurnId,
 } from "./deps.js";
 import { installAgentRuntimeMethods } from "./methods/index.js";
+import { enqueueBackgroundTaskNotification } from "./methods/background-notifications.js";
 import type { StartSavedWorkflowRunResult } from "./methods/dynamic-workflow-run-start.js";
 import type {
   AmendWorkflowRunSettingsInput,
@@ -153,6 +154,21 @@ export class AgentRuntime {
     return controlOffPeakRuntime(
       this as unknown as import("./internal.js").AgentRuntimeInternal,
       input,
+    );
+  }
+  /**
+   * 宿主侧（bootstrap）向本会话投递后台任务通知的公开入口：spawned_thread 首轮结算
+   * 与 pending 补发走这里，避免 bootstrap 触碰 AgentRuntimeInternal 私有面。
+   */
+  enqueueHostBackgroundTaskNotification(notification: {
+    originMeta?: import("@zcode/contracts").BackgroundResultOriginMeta;
+    taskId?: string;
+    text: string;
+    traceContext: TraceContext;
+  }): void {
+    enqueueBackgroundTaskNotification.call(
+      this as unknown as import("./internal.js").AgentRuntimeInternal,
+      notification,
     );
   }
   private sessionId: SessionId;

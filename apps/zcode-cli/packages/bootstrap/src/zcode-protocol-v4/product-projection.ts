@@ -2303,6 +2303,12 @@ export class ProductProjection {
   ): ConversationDelta[] {
     const row = this.findToolRow(parsed.toolUseId);
     if (!row) return [];
+    // CreateSession 行不参与通知结算：它的 ToolCallResult（含 sessionId 的 JSON）是创建时
+    // 终态快照，轮尾卡（renderers/session-create.tsx）靠解析它拿到 sessionId。这里的回写
+    // 本是 background Agent 的 launch-ACK 语义（BG26：launch ACK 只是占位，真实终态随通知
+    // 到来）；套在 CreateSession 上会把 output 覆盖成子会话首轮的通知文本，sessionId 丢失、
+    // 卡片消失。子会话状态由侧栏与通知轮承载（21-session-create.md「通知投递」）。
+    if (row.toolName === "CreateSession") return [];
 
     const notificationStatus = zcodeBackgroundTaskNotificationToolUpdateStatus(
       parsed.notification.status,

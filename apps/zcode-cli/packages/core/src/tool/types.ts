@@ -36,7 +36,9 @@ import type {
   SessionEvent,
   SessionId,
   SessionModePort,
+  SessionSpawnPort,
   SessionStorePort,
+  SessionTaskType,
   SkillPort,
   SkillTelemetryMetadata,
   SubagentPort,
@@ -151,6 +153,8 @@ export interface ToolExecutionContext {
   automationId?: string;
   /** 当前工具调用是否属于闲时任务派发轮；OffPeakCreate handler 用它做最终拒绝。 */
   offPeakTurn?: boolean;
+  /** 当前会话的 taskType；CreateSession handler 用它做 spawned_thread 递归终检。 */
+  taskType?: SessionTaskType;
   traceContext?: TraceContext;
   traceId: TraceId;
   spanId?: string;
@@ -180,6 +184,8 @@ export interface ToolExecutionContext {
   artifactStore?: ToolArtifactStorePort;
   automationPort?: AutomationPort;
   offPeakPort?: OffPeakPort;
+  /** CreateSession 的进程内建会话端口；缺席则工具不注册（同 automation 门控模式）。 */
+  sessionSpawnPort?: SessionSpawnPort;
   topicResourcePort?: TopicResourcePort;
   sessionStore?: SessionStorePort;
   sessionModePort?: SessionModePort;

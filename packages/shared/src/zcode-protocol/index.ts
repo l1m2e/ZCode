@@ -2001,6 +2001,9 @@ export const zcodeSessionCreateParamsSchema = z
     // 灰度 mode 随布尔同行下发（launch.md「On demand: activation」）：`onDemand` 让 CLI 把十个
     // 工具推迟到会话首次 `/workflow` 才注册；缺席 = 按布尔行事（alwaysOn），供旧 Host 配对。
     dynamicWorkflowMode: zcodeDynamicWorkflowModeSchema.optional(),
+    // CreateSession 工具进程内创建 spawned_thread 会话时显式下发；缺省落回 interactive。
+    // 与 zcodeSessionKindSchema（contracts SESSION_TASK_TYPES 镜像）同域。
+    taskType: zcodeSessionKindSchema.optional(),
   })
   .strict();
 export type ZCodeSessionCreateParams = z.infer<typeof zcodeSessionCreateParamsSchema>;
@@ -2018,7 +2021,7 @@ export const zcodeSessionResumeParamsSchema = z
     toolDenylist: z.array(nonEmptyString).optional(),
     // 与 create 同语义；resume 不带会导致冷恢复丢 Off-Peak 工具面。
     offPeakToolEnabled: z.boolean().optional(),
-    // 与 create 同语义；resume 不带会导致冷恢复丢工作流工具簇。
+    // 与 create 同语义；冷恢复重建 runtime 时必须沿用 create 的工具面约束（否则会绕过 allow/deny，尤其 CUA 会话）。
     dynamicWorkflowEnabled: z.boolean().optional(),
     dynamicWorkflowMode: zcodeDynamicWorkflowModeSchema.optional(),
   })

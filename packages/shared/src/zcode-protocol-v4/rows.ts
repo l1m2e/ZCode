@@ -8,10 +8,7 @@ import { highspeedMessageMetaSchema } from "../highspeed.js";
 import { executionOutputPreviewSchema } from "../execution-output-preview.js";
 import { timestampSchema } from "./core.js";
 import { conversationInputSourceSchema } from "./input-intent.js";
-import {
-  backgroundResultOriginMetaSchema,
-  workflowLaunchMetaSchema,
-} from "./workflow-row-meta.js";
+import { backgroundResultOriginMetaSchema, workflowLaunchMetaSchema } from "./workflow-row-meta.js";
 import { attachmentRefSchema } from "./attachment-ref.js";
 
 // RowBase。rowId：session 内单调、永不复用、事件日志的确定性纯函数。
@@ -137,8 +134,9 @@ export const userInputRowSchema = z.object({
   ]),
   originMeta: z
     .object({
-      // 与 backgroundResultOriginMetaSchema 同一组取值（含 workflow run 的 "workflow"）。
-      backgroundSource: z.enum(["bash", "subagent", "workflow"]).optional(),
+      // 与 backgroundResultOriginMetaSchema 同一组取值（含 workflow run 的 "workflow"
+      // 与 CreateSession 派生会话的 "spawned_thread"）。
+      backgroundSource: z.enum(["bash", "subagent", "workflow", "spawned_thread"]).optional(),
       workId: z.string().optional(),
       senderSessionId: z.string().optional(),
       senderLabel: z.string().optional(),

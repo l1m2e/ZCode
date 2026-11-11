@@ -86,3 +86,22 @@ flowchart LR
 启动页标题统一为“新标签页”（New tab）。页面左右最小留白为 28px，双列间距为 32px；分区标题与条目 logo 方块左边缘对齐。应用插件通过 PluginStoreAvatar 复用市场的真实图标来源和尺寸规则，图片缺失或加载失败时显示拼图占位；内置工具保留各自图标。推荐顺序、安装与打开行为不变。
 
 推荐应用列表首次加载时展示 8 个骨架条目：48px 圆角图标、标题与说明两行占位、24px 高的胶囊操作占位。行内间距和内边距与实际条目保持一致；沿用 36rem 单双列断点与 32px 列间距，并遵守系统减少动画偏好。
+
+## 独立侧边会话（side-chat，2026-11-10）
+
+「+」菜单新增「新侧边会话」入口：在右侧面板发起一个**完全独立**的干净会话，用于用户有了新
+想法但不想污染当前会话上下文的场景。与辅助对话（selection-side-chat）的边界：
+
+- 无父子关系：不挂 parentSessionId、无 rootSessionId、不继承选中内容；会话是 workspace 级
+  普通 `interactive` 会话，落盘并进侧栏任务列表，与手工「新聊天」创建的会话同语义。
+- 无完成通知：不接 spawned_thread 通知链路（那是 Agent 经 CreateSession 工具派生会话的语义）。
+- 每次「新侧边会话」都创建一个新 tab（ordinal 多开，标题「侧边会话 N」）；tab 内首条消息发送前
+  `childSessionId` 缺席，SessionPane 以 `sessionId=null` 走既有 draft 预热；首发提升后由
+  `onSessionCreated` 回填 tab（同 pane 后续轮次复用该会话）。
+- 可见性为 workspace 级（同 git/开发者工具）：不随主区切换会话而隐藏；关闭 tab 不删除会话，
+  会话仍在侧栏，可从侧栏重新打开。删除会话后 tab 内呈现既有「会话不存在」状态，不做自动清理。
+- 门禁：`!mobileOverlay && !isMobileTextInputViewport`（手机远控保持单列抽屉，不注册入口）；
+  不要求 activeTaskId（草稿态主区也可发起）。远端 workspace 可用（会话经既有连接注册表路由）。
+- 渲染复用 `V4PaneConversationProvider + SessionPane`（`app-shell/SideChatPane.tsx`）；tab 随
+  TabsContent `forceMount` 保活，切换 tab 不丢草稿。ownerTaskId 冻结遵循
+  `stampSidePaneTabsOwnership` 既有规则；可见性不依赖 owner（workspace 级）。

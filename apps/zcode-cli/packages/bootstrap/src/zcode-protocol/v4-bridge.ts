@@ -118,6 +118,7 @@ import type {
   ZCodeProtocolSessionRecord,
 } from "./server-types.js";
 import { createProtocolLogger } from "./server-types.js";
+import { deliverSpawnedThreadNotification } from "./session-spawn-port.js";
 
 function normalizeStoredTitleSource(
   source: string | undefined,
@@ -1253,6 +1254,9 @@ export function createConversationV4Gateway(
       dynamicWorkflowEnabled,
       dynamicWorkflowMode,
       permissionScope,
+      taskType,
+      parentSessionId,
+      toolDenylist,
     }) => {
       if (permissionScope && !context.deps.sessionStore)
         throw new Error("Group task permission scope requires persistence");
@@ -1284,6 +1288,11 @@ export function createConversationV4Gateway(
         ...(dynamicWorkflowEnabled === true && dynamicWorkflowMode !== undefined
           ? { dynamicWorkflowMode }
           : {}),
+        // CreateSession 进程内建 spawned_thread 会话：类型/父子/工具面 deny 随 create 落盘，
+        // 冷恢复经 resume 的存储 taskType 还原（server-operations 的 resume 透传）。
+        ...(taskType ? { taskType } : {}),
+        ...(parentSessionId ? { parentSessionId } : {}),
+        ...(toolDenylist ? { toolDenylist } : {}),
       });
       if (permissionScope) {
         const record = context.sessions.get(created.sessionId);
@@ -1651,6 +1660,43 @@ export function createConversationV4Gateway(
     },
     onHighspeedTurnTerminal: (sessionId, event, snapshot) => {
       persistHighspeedTimingOnTurnTerminal(context, sessionId, event, snapshot);
+    },
+    // spawned_thread 首轮结算 → 父会话后台通知（仅一次；父未加载落 pending entry）。
+    onSpawnedThreadTurnTerminal: (sessionId, event, snapshot) => {
+      const payload = event.payload as { resultType?: string };
+      const status =
+        event.type === SessionEventType.TurnError
+          ? "error"
+          : payload?.resultType === "cancelled"
+            ? "interrupted"
+            : "completed";
+      const rows = snapshot.rows.window;
+      let summary: string | undefined;
+      for (let index = rows.length - 1; index >= 0; index -= 1) {
+        const row = rows[index];
+        if (row?.kind === "assistantText" && row.text.trim().length > 0) {
+          summary = row.text;
+          break;
+        }
+      }
+      const error =
+        event.type === SessionEventType.TurnError
+          ? String((event.payload as { message?: string })?.message ?? "")
+          : undefined;
+      void deliverSpawnedThreadNotification(context, {
+        childSessionId: sessionId,
+        status,
+        ...(summary ? { summary } : {}),
+        ...(error ? { error } : {}),
+        settledAt: Date.now(),
+      }).catch((notifyError) => {
+        context.logger?.warn("spawned thread notification delivery failed", {
+          error: notifyError instanceof Error ? notifyError.message : String(notifyError),
+          event: "zcode_protocol.session_spawn.notify_failed",
+          module: "bootstrap.zcode_protocol",
+          sessionId,
+        });
+      });
     },
     // Gateway 的单一 READY promise 负责并发与水位；binder 只恢复 runtime 并返回 M0/M1。
     retainSessionRuntime: async (sessionId) =>

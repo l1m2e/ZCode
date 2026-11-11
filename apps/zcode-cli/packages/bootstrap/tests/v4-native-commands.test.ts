@@ -887,7 +887,8 @@ describe("v4 原生 sendText", () => {
 
     expect(app.sendInput.mock.calls[0]?.[1]).toEqual(
       expect.objectContaining({
-        toolDisallowlist: ["CronCreate", "CronUpdate", "CronDelete"],
+        // automation 轮同时隐藏 CreateSession（不得派生顶层会话线程，21-session-create.md）。
+        toolDisallowlist: ["CronCreate", "CronUpdate", "CronDelete", "CreateSession"],
       }),
     );
     expect(app.sendInput.mock.calls[0]?.[1]?.intent).not.toHaveProperty("highspeed");
@@ -994,6 +995,8 @@ describe("v4 原生 sendText", () => {
     // Host 的额外 denylist 另行合并。
     expect(app.sendInput.mock.calls[0]?.[1].toolDisallowlist).toEqual([
       "OffPeakCreate",
+      // CreateSession：闲时轮不得派生顶层会话线程（21-session-create.md）。
+      "CreateSession",
       "Workflow",
       "CreateWorkflow",
       "AmendWorkflow",
@@ -1417,7 +1420,8 @@ describe("v4 原生 sendText", () => {
         delivery: "start_turn",
         inputId: "cmd-1",
         queryId: "cmd-1",
-        toolDisallowlist: ["CronCreate", "CronUpdate", "CronDelete"],
+        // automation 轮同时隐藏 CreateSession（不得派生顶层会话线程，21-session-create.md）。
+        toolDisallowlist: ["CronCreate", "CronUpdate", "CronDelete", "CreateSession"],
       }),
     );
     expect(app.steerTurn).not.toHaveBeenCalled();

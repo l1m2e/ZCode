@@ -19,6 +19,8 @@ import type {
   Model,
   ModelCatalogPort,
   OffPeakPort,
+  SessionSpawnPort,
+  SessionTaskType,
   TopicResourcePort,
   PdfDocumentPort,
   PermissionBrokerPort,
@@ -110,6 +112,8 @@ export interface ToolExecutorOptions {
   artifactStore?: ToolArtifactStorePort;
   automationPort?: AutomationPort;
   offPeakPort?: OffPeakPort;
+  /** CreateSession 的进程内建会话端口；缺席则工具不注册。 */
+  sessionSpawnPort?: SessionSpawnPort;
   topicResourcePort?: TopicResourcePort;
   sessionStore?: SessionStorePort;
   sessionModePort?: SessionModePort;
@@ -133,6 +137,8 @@ export interface ToolExecutorOptions {
   clientMode?: "desktop-continuous" | "web-remote-replayable";
   deliveryKind?: "desktop-continuous" | "web-remote-replayable";
   runtimeScope?: ToolRuntimeScope;
+  /** 当前会话 taskType；CreateSession handler 用它做递归终检。 */
+  sessionTaskType?: SessionTaskType;
   getWorkingDirectory?: () => string;
   setWorkingDirectory?: (cwd: string) => Promise<void> | void;
   getWorkspaceRoot?: () => string;
@@ -237,6 +243,8 @@ export interface ToolExecutorDeps {
   artifactStore?: ToolArtifactStorePort;
   automationPort?: AutomationPort;
   offPeakPort?: OffPeakPort;
+  /** CreateSession 的进程内建会话端口；缺席则工具不注册。 */
+  sessionSpawnPort?: SessionSpawnPort;
   topicResourcePort?: TopicResourcePort;
   sessionStore?: SessionStorePort;
   sessionModePort?: SessionModePort;
@@ -263,6 +271,8 @@ export interface ToolExecutorDeps {
   deliveryKind?: "desktop-continuous" | "web-remote-replayable";
   getMemoryRoot?: () => string | undefined;
   runtimeScope: ToolRuntimeScope;
+  /** 当前会话 taskType；CreateSession handler 用它做递归终检。 */
+  sessionTaskType?: SessionTaskType;
   traceContext?: TraceContext;
   getMode: () => CollaborationMode;
   maxConcurrency: number;

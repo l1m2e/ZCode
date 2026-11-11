@@ -1,4 +1,5 @@
 import {
+  CREATE_SESSION_TOOL_NAME,
   ENTER_PLAN_MODE_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
 } from "@zcode/contracts";
@@ -7,6 +8,9 @@ import { filterDisallowedToolNames } from "../tool/tool-visibility.js";
 export const SUBAGENT_CHILD_FORCED_DISALLOWED_TOOLS = [
   ENTER_PLAN_MODE_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
+  // 子代理不得再派生顶层会话线程：通知归属与侧栏语义只属于主会话
+  // （21-session-create.md）；spawned_thread 会话自身经 toolDenylist 同样不可见。
+  CREATE_SESSION_TOOL_NAME,
 ] as const;
 
 export function buildSubagentChildDisallowRules(
