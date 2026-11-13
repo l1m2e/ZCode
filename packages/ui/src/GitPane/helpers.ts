@@ -1,5 +1,5 @@
 import type { GitChangeSourceId, GitDiffResult } from "@zcode/shared";
-import { getFiletypeFromFileName } from "@pierre/diffs";
+import { getFiletypeFromFileName, parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
 import {
   getPatchPreviewLineContent,
   getPlainTextPatchContentLines,
@@ -37,9 +37,7 @@ export function getSourceMessageId(sourceId: GitChangeSourceId): string {
   }
 }
 
-export function getDiffFallbackMessageId(
-  availability: GitDiffResult["availability"],
-): string {
+export function getDiffFallbackMessageId(availability: GitDiffResult["availability"]): string {
   switch (availability) {
     case "binary":
       return "git.diff.binaryTitle";
@@ -100,6 +98,67 @@ export function getErrorMessage(error: unknown): string {
   return String(error);
 }
 
+// ============================================================================
+// 审查面板框选评论：行号映射与文本截取
+// ============================================================================
+
+/** 精确截取一基闭区间；未知内容或越界返回 null，不能夹到另一行后发出错误引用。 */
+export function extractLinesFromContent(
+  content: string | null,
+  startLine: number,
+  endLine: number,
+): string | null {
+  if (content === null || !Number.isInteger(startLine) || !Number.isInteger(endLine)) return null;
+  const lines = content.split("\n");
+  if (lines.at(-1) === "") lines.pop();
+  if (startLine < 1 || endLine < startLine || endLine > lines.length) return null;
+  return lines.slice(startLine - 1, endLine).join("\n");
+}
+
+/** 复用渲染库的坐标，patch 只记录真实 hunk 行，省略区间不能冒充全文。 */
+export function parseCommentablePatch(patch: string): FileDiffMetadata | null {
+  try {
+    const parsed = parsePatchFiles(patch, undefined, true);
+    return parsed.length === 1 && parsed[0]?.files.length === 1 ? parsed[0].files[0]! : null;
+  } catch {
+    return null;
+  }
+}
+
+export function extractLinesFromPatch(
+  patch: FileDiffMetadata,
+  side: "additions" | "deletions",
+  startLine: number,
+  endLine: number,
+): string | null {
+  if (
+    !Number.isInteger(startLine) ||
+    !Number.isInteger(endLine) ||
+    startLine < 1 ||
+    endLine < startLine
+  )
+    return null;
+  const lines = side === "additions" ? patch.additionLines : patch.deletionLines;
+  if (endLine - startLine + 1 > lines.length) return null;
+  const selected: string[] = [];
+  for (let number = startLine; number <= endLine; number += 1) {
+    const matchingHunks = patch.hunks.filter((hunk) => {
+      const start = side === "additions" ? hunk.additionStart : hunk.deletionStart;
+      const count = side === "additions" ? hunk.additionCount : hunk.deletionCount;
+      return number >= start && number < start + count;
+    });
+    // 多重归属或缺行都没有唯一准确引用，必须拒绝，不能跨 hunk 间隙拼接。
+    if (matchingHunks.length !== 1) return null;
+    const hunk = matchingHunks[0]!;
+    const start = side === "additions" ? hunk.additionStart : hunk.deletionStart;
+    const index = side === "additions" ? hunk.additionLineIndex : hunk.deletionLineIndex;
+    const line = lines[index + number - start];
+    if (line === undefined) return null;
+    selected.push(line.replace(/\n$/, ""));
+  }
+  return selected.join("\n");
+}
+
 function countLogicalLines(content: string | null): number {
   if (!content) {
     return 0;
@@ -126,8 +185,7 @@ export function shouldRenderPatchOnlyGitDiffPreview(diff: GitDiffResult): boolea
     return true;
   }
 
-  const fullContentCharCount =
-    (diff.beforeContent?.length ?? 0) + (diff.afterContent?.length ?? 0);
+  const fullContentCharCount = (diff.beforeContent?.length ?? 0) + (diff.afterContent?.length ?? 0);
   if (fullContentCharCount > MAX_RICH_DIFF_FULL_CONTENT_CHAR_COUNT) {
     return true;
   }
@@ -140,7 +198,19 @@ export function shouldRenderPatchOnlyGitDiffPreview(diff: GitDiffResult): boolea
   return fullContentLineCount > MAX_RICH_DIFF_FULL_CONTENT_LINE_COUNT;
 }
 
-export function getGitPaneDiffPreviewPlan(diff: GitDiffResult | null): GitPaneDiffPreviewPlan {
+export function getGitPaneDiffPreviewPlan(
+  diff: GitDiffResult | null,
+  preferFullContent = false,
+): GitPaneDiffPreviewPlan {
+  // 会话审查已取得历史全文时，旧行数阈值不应再把全文变成局部 hunk 并关闭评论。
+  if (
+    preferFullContent &&
+    diff?.availability === "patch" &&
+    diff.beforeContent !== null &&
+    diff.afterContent !== null
+  ) {
+    return { kind: "rich" };
+  }
   if (diff?.availability !== "patch" || !diff.patch) {
     return { kind: "rich" };
   }
@@ -193,9 +263,7 @@ export function shouldRenderPlainTextDiffPreview(patch: string): string[] | null
   // review 面板只该把纯文本新增/删除文件降级成轻量 preview。
   // 底层通用 fallback 为了避免文件变更展开空白，会覆盖 JSON 等结构化文件；
   // 这里重新按文件类型收口，避免结构化文件绕过 PatchDiff 的语义化渲染路径。
-  return getFiletypeFromFileName(patchFileName) === "text"
-    ? fallbackLines
-    : null;
+  return getFiletypeFromFileName(patchFileName) === "text" ? fallbackLines : null;
 }
 
 function getPatchContentFileName(lines: readonly string[]): string | null {

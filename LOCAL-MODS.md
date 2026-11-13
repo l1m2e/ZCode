@@ -189,3 +189,17 @@ ditto "packages/desktop/dist/mac-arm64/ZCode Preview.app" "/Applications/ZCode P
 `packages/ui/src/v4/sessionStatsStore.ts`、`packages/ui/src/v4/SessionStatsBadges.tsx`
 通过 `architecture-policy.yaml` 的 `session-stats-unmanaged-new-files` 例外登记。
 同步官方代码时若 `architecture-policy.yaml` 冲突，保留 exceptions 列表末尾的这条即可。
+
+审查面板 VS Code 式改造（spec: `docs/git-review-split-layout.md`）通过两个 managed 模块登记，
+不新增 `unmanaged-new-file` 例外：
+
+- `git-review`：`packages/ui/src/GitPane/`、精确文件 `GitPane.tsx` 与
+  `lib/gitReviewSettings.ts`，包含审查 UI owner、子组件和纯偏好定义。
+- `code-comment`：`packages/ui/src/code-comment/` 放契约四件套，精确登记
+  `components/ui/code-comment.tsx`，供审查与文件预览共用。
+
+同步时保留这两个 modules 条目及各自 `module.ts`、`contract.ts`、`contract.example.ts`、
+`CONTRACT.md`，公开入口只包含既有挂载/纯偏好/共享组件入口与 contract；不扩大到整个
+`components/ui`、`lib` 或 store。`ui` 仍是 legacy，架构检查通过不代表其余 UI、
+持久化与远程运行时语义已整体受管。此前本任务误用 `baseline:update` 产生的 4 条新增和
+2 条原有删除已撤回，保留原有基线；本次不用基线更新接受新问题。

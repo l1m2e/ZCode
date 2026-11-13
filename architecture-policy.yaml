@@ -1812,6 +1812,35 @@ modules:
       ui: .
     owner: conversation
 
+  # Git 审查 UI：精确登记现有 owner、子组件与纯偏好定义，不接管整个 ui/lib。
+  - id: git-review
+    roots:
+      - packages/ui/src/GitPane
+      - packages/ui/src/GitPane.tsx
+      - packages/ui/src/lib/gitReviewSettings.ts
+    managed: true
+    requires: [code-comment, shared, ui]
+    publicEntrypoints:
+      - packages/ui/src/GitPane/contract.ts
+      - packages/ui/src/GitPane.tsx
+      - packages/ui/src/lib/gitReviewSettings.ts
+    layers:
+      ui: .
+    owner: workspace
+  # 文件预览与 Git 审查共用的受控评论草稿；保留现有组件入口。
+  - id: code-comment
+    roots:
+      - packages/ui/src/code-comment
+      - packages/ui/src/components/ui/code-comment.tsx
+    managed: true
+    requires: [ui]
+    publicEntrypoints:
+      - packages/ui/src/code-comment/contract.ts
+      - packages/ui/src/components/ui/code-comment.tsx
+    layers:
+      ui: .
+    owner: conversation
+
 global:
   # 临时时间戳（2026-09-10）：unmanaged-new-file 只约束此日期之后首次入库的文件。
   # 基于领先 staging 很多的分支开工时，merge-base 之前的"新增"文件不应被追溯。

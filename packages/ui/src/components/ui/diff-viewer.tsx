@@ -1,9 +1,14 @@
 "use client";
 
-import type { CSSProperties, HTMLAttributes } from "react";
+import type { CSSProperties, HTMLAttributes, ReactNode } from "react";
 import { memo, useMemo } from "react";
 import type { BundledTheme } from "shiki";
-import type { FileContents, FileDiffOptions } from "@pierre/diffs";
+import type {
+  DiffLineAnnotation,
+  FileContents,
+  FileDiffOptions,
+  SelectedLineRange,
+} from "@pierre/diffs";
 import { MultiFileDiff, PatchDiff } from "@pierre/diffs/react";
 
 import { cn } from "@/components/lib/utils.js";
@@ -18,6 +23,19 @@ type DiffViewerStyle = CSSProperties & {
 };
 
 const DIFF_VIEWER_UNSAFE_CSS = ``;
+
+// wrap 模式的 code 是 display:contents，实际行号/正文固定在四列网格；仅改 order 无效。
+// 同时移动 gutter 和 content，保证新版在左且行号、选区和注解仍属于原版本。
+const DIFF_SPLIT_REVERSE_UNSAFE_CSS = [
+  "[data-overflow=scroll] code[data-additions]{order:-1}",
+  "[data-overflow=scroll] code[data-deletions]{order:1}",
+  "[data-overflow=wrap] [data-additions] [data-gutter]{grid-column:1;border-left:0}",
+  "[data-overflow=wrap] [data-additions] [data-content]{grid-column:2;border-right:1px solid var(--diffs-bg)}",
+  "[data-overflow=wrap] [data-deletions] [data-gutter]{grid-column:3;border-left:1px solid var(--diffs-bg)}",
+  "[data-overflow=wrap] [data-deletions] [data-content]{grid-column:4;border-right:0}",
+].join("");
+
+export type DiffViewerDiffStyle = "unified" | "split";
 
 type DiffViewerPatchInput = {
   patch: string;
@@ -41,6 +59,22 @@ export type DiffViewerProps = Omit<HTMLAttributes<HTMLDivElement>, "children"> &
     darkTheme?: BundledTheme;
     themeType?: "light" | "dark";
     selectedLines?: DiffViewerSelectedLineRange | null;
+    lineAnnotations?: DiffLineAnnotation[];
+    renderAnnotation?: (annotation: DiffLineAnnotation) => ReactNode;
+    /** diff 布局：unified 单栏（默认，保持既有调用方行为）或 split 双栏。 */
+    diffStyle?: DiffViewerDiffStyle;
+    /** 展开全部未修改上下文行（仅 MultiFileDiff 全文渲染有意义）。 */
+    expandUnchanged?: boolean;
+    /** 长行处理：scroll 横向滚动（默认）或 wrap 折行。 */
+    overflow?: "scroll" | "wrap";
+    /** split 模式下把新版（additions）列放到左栏。 */
+    splitReverse?: boolean;
+    /** 框选行交互（拖拽行/行号），结束时回调；null 表示清除选区。 */
+    enableLineSelection?: boolean;
+    onLineSelectionEnd?: (range: SelectedLineRange | null) => void;
+    /** hover 行号旁展示 "+" 工具按钮，点击（含拖拽多行）时回调。 */
+    enableGutterUtility?: boolean;
+    onGutterUtilityClick?: (range: SelectedLineRange) => unknown;
   };
 
 export interface DiffViewerSelectedLineRange {
@@ -60,6 +94,16 @@ function DiffViewerComponent(props: DiffViewerProps) {
     diffClassName,
     fontSizePx = 12,
     selectedLines,
+    lineAnnotations,
+    renderAnnotation,
+    diffStyle = "unified",
+    expandUnchanged = false,
+    overflow = "scroll",
+    splitReverse = false,
+    enableLineSelection,
+    onLineSelectionEnd,
+    enableGutterUtility,
+    onGutterUtilityClick,
     className,
     style,
   } = props;
@@ -77,15 +121,19 @@ function DiffViewerComponent(props: DiffViewerProps) {
   );
   const options = useMemo<FileDiffOptions<undefined>>(
     () => ({
-      diffStyle: "unified",
+      diffStyle,
       diffIndicators: "bars",
       disableFileHeader: true,
       // PatchDiff 只有 patch 里的局部上下文，未包含完整 before/after 内容。
       // 使用 simple 避免展示无法点击展开的 “unmodified lines”；MultiFileDiff 保留可展开提示。
       hunkSeparators: rendersPatch ? "simple" : "line-info",
+      expandUnchanged: rendersPatch ? false : expandUnchanged,
       lineDiffType: "word-alt",
-      overflow: "scroll",
-      unsafeCSS: DIFF_VIEWER_UNSAFE_CSS,
+      overflow,
+      unsafeCSS:
+        splitReverse && diffStyle === "split"
+          ? DIFF_SPLIT_REVERSE_UNSAFE_CSS
+          : DIFF_VIEWER_UNSAFE_CSS,
       // @pierre/diffs 的 code 节点在 Shadow DOM 内，外层 Tailwind class 无法命中；
       // 需要覆盖其内部样式时走 unsafeCSS 注入，且只做最小覆盖，不做大范围样式重写。
       theme:
@@ -97,9 +145,28 @@ function DiffViewerComponent(props: DiffViewerProps) {
           : undefined,
       themeType,
       preferredHighlighter: DIFFS_PREFERRED_HIGHLIGHTER,
+      enableLineSelection: enableLineSelection === true,
+      enableGutterUtility: enableGutterUtility === true,
+      lineHoverHighlight: enableLineSelection || enableGutterUtility ? "both" : "disabled",
+      onLineSelectionEnd,
+      onGutterUtilityClick,
       ...optionsOverride,
     }),
-    [darkTheme, lightTheme, optionsOverride, rendersPatch, themeType],
+    [
+      darkTheme,
+      diffStyle,
+      enableGutterUtility,
+      enableLineSelection,
+      expandUnchanged,
+      lightTheme,
+      onGutterUtilityClick,
+      onLineSelectionEnd,
+      optionsOverride,
+      overflow,
+      rendersPatch,
+      splitReverse,
+      themeType,
+    ],
   );
 
   const diffNode = rendersPatch ? (
@@ -108,6 +175,8 @@ function DiffViewerComponent(props: DiffViewerProps) {
       options={options}
       disableWorkerPool={disableWorkerPool}
       selectedLines={selectedLines}
+      lineAnnotations={lineAnnotations}
+      renderAnnotation={renderAnnotation}
       className={cn("min-h-full w-full", diffClassName)}
       style={viewerStyle}
     />
@@ -118,6 +187,8 @@ function DiffViewerComponent(props: DiffViewerProps) {
       options={options}
       disableWorkerPool={disableWorkerPool}
       selectedLines={selectedLines}
+      lineAnnotations={lineAnnotations}
+      renderAnnotation={renderAnnotation}
       className={cn("min-h-full w-full", diffClassName)}
       style={viewerStyle}
     />
@@ -156,6 +227,16 @@ function omitPatchDiffProps({
   darkTheme: _darkTheme,
   themeType: _themeType,
   selectedLines: _selectedLines,
+  lineAnnotations: _lineAnnotations,
+  renderAnnotation: _renderAnnotation,
+  diffStyle: _diffStyle,
+  expandUnchanged: _expandUnchanged,
+  overflow: _overflow,
+  splitReverse: _splitReverse,
+  enableLineSelection: _enableLineSelection,
+  onLineSelectionEnd: _onLineSelectionEnd,
+  enableGutterUtility: _enableGutterUtility,
+  onGutterUtilityClick: _onGutterUtilityClick,
   className: _className,
   style: _style,
   ...divProps
@@ -174,6 +255,16 @@ function omitMultiFileDiffProps({
   darkTheme: _darkTheme,
   themeType: _themeType,
   selectedLines: _selectedLines,
+  lineAnnotations: _lineAnnotations,
+  renderAnnotation: _renderAnnotation,
+  diffStyle: _diffStyle,
+  expandUnchanged: _expandUnchanged,
+  overflow: _overflow,
+  splitReverse: _splitReverse,
+  enableLineSelection: _enableLineSelection,
+  onLineSelectionEnd: _onLineSelectionEnd,
+  enableGutterUtility: _enableGutterUtility,
+  onGutterUtilityClick: _onGutterUtilityClick,
   className: _className,
   style: _style,
   ...divProps

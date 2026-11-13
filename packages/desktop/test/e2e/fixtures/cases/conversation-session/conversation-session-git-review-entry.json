@@ -10,7 +10,7 @@
     {
       "path": ".zcode-e2e/conversation-session-git-review-entry/status-panel-review.txt",
       "source": "created-by-spec",
-      "description": "beforeSession case setup 创建未跟踪文件，驱动 status panel Git Changes 入口和 unstaged review 数据。"
+      "description": "beforeSession 在隔离 HOME 的 Git index 预置 24 行旧版，再写入 25 行新版，包含替换、插入、长行与完整未修改上下文；首条验收 finally 移除该 index 条目，资源回归仍以未跟踪小文件验证 +4 -0。"
     }
   ],
   "providerRequestPolicy": "none",

@@ -3691,11 +3691,28 @@ async function seedE2EGitReviewEntryWorkspace(specs: string[] = []) {
   await mkdir(caseRoot, { recursive: true });
   await runGitReviewEntryCommand(workspacePath, ["init"]);
   await runGitReviewEntryCommand(workspacePath, ["checkout", "-B", "main"]);
-  await writeFile(
-    resolve(caseRoot, "status-panel-review.txt"),
-    "status panel Git review e2e fixture\n",
-    "utf8",
+  const reviewFilePath = resolve(caseRoot, "status-panel-review.txt");
+  const beforeLines = Array.from({ length: 24 }, (_, index) => `unchanged context ${index + 1}`);
+  beforeLines[4] = "E2E_REVIEW_OLD_FIRST = 1";
+  beforeLines[5] = "E2E_REVIEW_OLD_SECOND = 2";
+  beforeLines[11] = `E2E_REVIEW_LONG_LINE ${"wrap-without-horizontal-scroll ".repeat(20)}`;
+  await writeFile(reviewFilePath, `${beforeLines.join("\n")}\n`, "utf8");
+  // 只在隔离 HOME 的 index 预置旧版，不创建提交；真实 unstaged diff 才能覆盖
+  // 两侧行号与折叠上下文。首条验收 finally 移除 index 条目，保留资源回归 +4 -0。
+  await runGitReviewEntryCommand(workspacePath, [
+    "add",
+    "--",
+    ".zcode-e2e/conversation-session-git-review-entry/status-panel-review.txt",
+  ]);
+  const afterLines = [...beforeLines];
+  afterLines.splice(
+    4,
+    2,
+    "E2E_REVIEW_NEW_FIRST = 101",
+    "E2E_REVIEW_NEW_SECOND = 102",
+    "E2E_REVIEW_INSERTED = 103",
   );
+  await writeFile(reviewFilePath, `${afterLines.join("\n")}\n`, "utf8");
 }
 
 async function runGitReviewEntryCommand(cwd: string, args: string[]) {

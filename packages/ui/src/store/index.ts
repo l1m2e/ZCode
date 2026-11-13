@@ -9,6 +9,11 @@ import type { IBroadcastService, BroadcastMessage } from "@zcode/services";
 import type { OAuthProviderId, UserInfo } from "@zcode/shared";
 import type { CodingPlanResetType } from "@zcode/shared";
 import type { CodePreviewSettings } from "@/lib/codePreviewSettings.js";
+import {
+  DEFAULT_GIT_REVIEW_SETTINGS,
+  normalizeGitReviewSettings,
+  type GitReviewSettings,
+} from "@/lib/gitReviewSettings.js";
 import type {
   CodingPlanQuotaResetUiEntries,
   CodingPlanQuotaResetUiEntry,
@@ -72,6 +77,7 @@ export interface LoginEntryAttempt {
 }
 
 const CODE_PREVIEW_SETTINGS_KEY = "zcode-code-preview-settings";
+const GIT_REVIEW_SETTINGS_KEY = "zcode-git-review-settings";
 const PERFORMANCE_MODE_STORAGE_KEY = "zcode-performance-mode";
 const HIDE_PROJECT_DEVICE_NAMES_STORAGE_KEY = "zcode-hide-project-device-names";
 export const FILE_MANAGER_NAVIGATION_PREFERENCES_STORAGE_KEY =
@@ -130,6 +136,20 @@ function loadPerformanceMode(): boolean {
   return readSafeLocalStorage(PERFORMANCE_MODE_STORAGE_KEY) === "true";
 }
 
+function loadGitReviewSettings(): GitReviewSettings {
+  try {
+    const raw = readSafeLocalStorage(GIT_REVIEW_SETTINGS_KEY);
+    if (!raw) {
+      return DEFAULT_GIT_REVIEW_SETTINGS;
+    }
+
+    const parsed = JSON.parse(raw) as Partial<GitReviewSettings>;
+    return normalizeGitReviewSettings(parsed);
+  } catch {
+    return DEFAULT_GIT_REVIEW_SETTINGS;
+  }
+}
+
 // ============================================================================
 // State 定义
 // ============================================================================
@@ -150,6 +170,10 @@ export interface ZCodeState {
   /** 代码预览设置 */
   codePreviewSettings: CodePreviewSettings;
   setCodePreviewSettings: (patch: Partial<CodePreviewSettings>) => void;
+
+  /** Git 审查面板展示偏好(布局与 diff 模式),纯展示偏好不改变 Agent 能力。 */
+  gitReviewSettings: GitReviewSettings;
+  setGitReviewSettings: (patch: Partial<GitReviewSettings>) => void;
 
   /** 各 workspace 的文件导航显隐偏好；缺席时默认展开。 */
   fileManagerNavigationOpenByWorkspace: Record<string, boolean>;
@@ -346,6 +370,14 @@ export function createZCodeStore(
         writeSafeLocalStorage(CODE_PREVIEW_SETTINGS_KEY, JSON.stringify(next));
         applyCodeFontFamily(next);
         return { codePreviewSettings: next };
+      }),
+
+    gitReviewSettings: loadGitReviewSettings(),
+    setGitReviewSettings: (patch: Partial<GitReviewSettings>) =>
+      set((state) => {
+        const next = normalizeGitReviewSettings({ ...state.gitReviewSettings, ...patch });
+        writeSafeLocalStorage(GIT_REVIEW_SETTINGS_KEY, JSON.stringify(next));
+        return { gitReviewSettings: next };
       }),
 
     fileManagerNavigationOpenByWorkspace: loadFileManagerNavigationPreferences(),
