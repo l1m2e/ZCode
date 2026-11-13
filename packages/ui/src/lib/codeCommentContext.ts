@@ -18,6 +18,11 @@ export interface CodeCommentPayload extends CodeCommentRange {
   comment: string;
   contextLabel?: string;
   commentLabel?: string;
+  /**
+   * 选中代码所属的文件版本：R = 新文件（默认，既有行为），
+   * L = 旧文件（Git 审查面板框选 deletions 侧时使用）。行号跟随所选版本。
+   */
+  side?: "L" | "R";
 }
 
 export interface CodeCommentComposerAttachment extends CodeCommentPayload {
@@ -36,6 +41,7 @@ export interface CodeCommentPreview extends CodeCommentRange {
   sourceTitle: string;
   selectedText: string;
   comment: string;
+  side?: CodeCommentPayload["side"];
 }
 
 interface ParsedCodeCommentPrompt {
@@ -116,6 +122,8 @@ export function isCodeCommentPayload(payload: unknown): payload is CodeCommentPa
     candidate.sourceTitle.length > 0 &&
     typeof candidate.selectedText === "string" &&
     typeof candidate.comment === "string" &&
+    // side 表示文件版本；未知值不能在进入草稿后被当作默认新版。
+    (candidate.side === undefined || candidate.side === "L" || candidate.side === "R") &&
     Number.isFinite(candidate.startLine) &&
     Number.isFinite(candidate.endLine)
   );
@@ -126,8 +134,10 @@ function buildCodeCommentMarkdown(payload: CodeCommentPayload) {
     payload.startLine === payload.endLine
       ? String(payload.startLine)
       : `${payload.startLine}-${payload.endLine}`;
+  // side 缺省按 R 处理：文件预览的既有链路从不传 side，序列化结果必须保持不变。
+  const side = payload.side ?? "R";
 
-  return `## Comment\nFile: ${payload.sourcePath ?? payload.sourceTitle}\nSide: R\nLines: ${lineLabel}\nSelected text:\n\`\`\`\n${payload.selectedText.trim()}\n\`\`\`\nComment:\n${payload.comment.trim()}\n`;
+  return `## Comment\nFile: ${payload.sourcePath ?? payload.sourceTitle}\nSide: ${side}\nLines: ${lineLabel}\nSelected text:\n\`\`\`\n${payload.selectedText.trim()}\n\`\`\`\nComment:\n${payload.comment.trim()}\n`;
 }
 
 function buildCodeCommentsBlock(attachments: readonly CodeCommentComposerAttachment[]) {
@@ -194,6 +204,14 @@ function parseCodeCommentItem(
     return null;
   }
 
+  // 历史恢复必须保留文件版本，否则旧版评论再次发送会变成 R；只读头部，避免误读代码里的 Side:。
+  const header = rawItem.slice(0, selectedTextMatch.index);
+  const sideMatch = /^Side:[\t ]*([^\r\n]*)$/m.exec(header);
+  const side = sideMatch?.[1]?.trim();
+  if (side !== undefined && side !== "L" && side !== "R") {
+    return null;
+  }
+
   const filePath = fileMatch[1];
   const lines = linesMatch[1];
   const selectedText = selectedTextMatch[1];
@@ -220,6 +238,7 @@ function parseCodeCommentItem(
     endLine: range.endLine,
     selectedText: selectedText.trim(),
     comment,
+    ...(side ? { side } : {}),
   };
 }
 
@@ -257,7 +276,8 @@ export function parsePromptCodeComments(
     )
     .filter((item): item is CodeCommentComposerAttachment => item !== null);
 
-  if (codeCommentAttachments.length === 0) {
+  // 任一条无法解析时保留原始正文，避免未知版本混在有效评论中时被静默丢弃。
+  if (codeCommentAttachments.length !== rawItems.length || codeCommentAttachments.length === 0) {
     return {
       visibleContent: content,
       codeCommentAttachments: [],

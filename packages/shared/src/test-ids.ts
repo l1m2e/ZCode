@@ -93,6 +93,16 @@ export const TID_GIT_COMMIT_INCLUDE_UNSTAGED = "git-commit-include-unstaged";
 export const TID_GIT_COMMIT_ACTION_COMMAND = "git-commit-action-command";
 /** Git 提交弹窗底部动作项（动态后缀为动作 id） */
 export const TID_GIT_COMMIT_ACTION_ITEM = "git-commit-action-item";
+/** Git 审查面板变更文件列表容器 */
+export const TID_GIT_REVIEW_FILE_LIST = "git-review-file-list";
+/** Git 审查面板文件过滤输入框 */
+export const TID_GIT_REVIEW_FILE_FILTER = "git-review-file-filter";
+/** Git 审查面板列表栏显隐开关 */
+export const TID_GIT_REVIEW_LIST_TOGGLE = "git-review-list-toggle";
+/** Git 审查面板 diff 单/双栏切换 */
+export const TID_GIT_REVIEW_DIFF_STYLE_TOGGLE = "git-review-diff-style-toggle";
+/** Git 审查面板选中代码后的评论草稿框 */
+export const TID_GIT_REVIEW_COMMENT_DRAFT = "git-review-comment-draft";
 /** 浏览器地址栏输入框 */
 export const TID_BROWSER_ADDRESS_INPUT = "browser-address-input";
 /** 浏览器后退按钮 */

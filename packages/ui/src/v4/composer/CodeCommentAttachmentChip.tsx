@@ -53,6 +53,13 @@ export function CodeCommentAttachmentChip({
             <div className="min-w-0 flex-1">
               <div className="flex min-w-0 items-center gap-2">
                 <span className="truncate font-medium">{comment.sourceTitle}</span>
+                {comment.side ? (
+                  <span className="shrink-0 text-ui-base text-foreground-subtle">
+                    {intl.formatMessage({
+                      id: comment.side === "L" ? "git.review.before" : "git.review.after",
+                    })}
+                  </span>
+                ) : null}
                 <span className="shrink-0 font-mono text-ui-base text-foreground-subtle">
                   {lineLabel}
                 </span>
