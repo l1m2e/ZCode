@@ -2038,6 +2038,7 @@ const koKR: Record<string, string> = {
   "git.review.changeOverview": "변경 개요: 클릭하여 이동, 방향키로 스크롤",
   "git.review.diffStyleSplit": "분할 비교(새 버전 왼쪽)",
   "git.review.diffStyleUnified": "인라인 비교",
+  "git.review.diffStyleEditor": "에디터 보기(현재 내용 + 변경 바)",
   "git.review.backToList": "파일 목록으로 돌아가기",
   "git.review.openPreview": "파일 미리보기로 열기",
   "git.review.emptySelectionTitle": "검토할 파일 선택",

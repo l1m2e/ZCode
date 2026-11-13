@@ -226,6 +226,17 @@ describe("SP13：status panel Git Changes 打开变更审阅", () => {
 
       await $(`[data-testid="${TID_GIT_REVIEW_DIFF_STYLE_TOGGLE}"]`).click();
       assertFullDiff(await waitForRenderedDiff("unified"), "unified");
+      // 三态循环新增 editor 档：unified → editor → split → unified 走完一轮，
+      // editor 档以当前内容为基准（旧代码行折叠、仅左缘色条），行集合与 unified 相同；
+      // 回到 unified 继续评论断言。
+      await $(`[data-testid="${TID_GIT_REVIEW_DIFF_STYLE_TOGGLE}"]`).click();
+      assertFullDiff(await waitForRenderedDiff("editor"), "editor");
+      await expectPersistedReviewSettings("editor", false);
+      await $(`[data-testid="${TID_GIT_REVIEW_DIFF_STYLE_TOGGLE}"]`).click();
+      assertFullDiff(await waitForRenderedDiff("split"), "split");
+      await expectPersistedReviewSettings("split", false);
+      await $(`[data-testid="${TID_GIT_REVIEW_DIFF_STYLE_TOGGLE}"]`).click();
+      assertFullDiff(await waitForRenderedDiff("unified"), "unified");
       // unified 的两种版本混选必须拒绝，不把旧行号近似映射成新版上下文。
       await selectDiffLines("deletions", 5, 6, false, "additions");
       await waitForMixedSelectionError();
@@ -622,7 +633,7 @@ async function readGitReviewDetailSnapshot(): Promise<GitReviewDetailSnapshot> {
 }
 
 type DiffSide = "additions" | "deletions";
-type DiffStyle = "split" | "unified";
+type DiffStyle = "split" | "unified" | "editor";
 
 function readRenderedDiff() {
   return browser.execute(
@@ -649,12 +660,25 @@ function readRenderedDiff() {
       };
       const readLines = (selector: string) =>
         Array.from(shadow?.querySelectorAll<HTMLElement>(`${selector} [data-line]`) ?? []).map(
-          (line) => ({
-            number: Number(line.getAttribute("data-line")),
-            type: line.getAttribute("data-line-type"),
-            text: line.textContent?.replace(/\n$/u, "") ?? "",
-            height: line.getBoundingClientRect().height,
-          }),
+          (line) => {
+            // 行号格与正文行共享 data-line-index；editor 档的逐行色条画在行号格 ::before 上。
+            const lineIndex = line.getAttribute("data-line-index");
+            const numberCell = lineIndex
+              ? shadow?.querySelector<HTMLElement>(
+                  `[data-column-number][data-line-index="${lineIndex}"]`,
+                )
+              : null;
+            return {
+              number: Number(line.getAttribute("data-line")),
+              type: line.getAttribute("data-line-type"),
+              text: line.textContent?.replace(/\n$/u, "") ?? "",
+              height: line.getBoundingClientRect().height,
+              top: line.getBoundingClientRect().top,
+              // editor 视觉合同需要对比增删行与上下文行的实际渲染背景。
+              background: getComputedStyle(line).backgroundColor,
+              mark: numberCell ? getComputedStyle(numberCell, "::before").backgroundColor : null,
+            };
+          },
         );
       const overflow = [
         ...(pane?.querySelectorAll<HTMLElement>("*") ?? []),
@@ -722,6 +746,7 @@ function assertFullDiff(snapshot: Awaited<ReturnType<typeof readRenderedDiff>>, 
     expect(snapshot.additions!.width).toBeGreaterThan(100);
     expect(snapshot.deletions!.width).toBeGreaterThan(100);
   } else {
+    // editor 是 unified 的视觉变体，DOM 结构（单栏 + 行类型属性）与 unified 相同。
     expect(snapshot.additions).toBeNull();
     expect(snapshot.deletions).toBeNull();
     expect(snapshot.unified!.width).toBeGreaterThan(200);
@@ -735,6 +760,62 @@ function assertFullDiff(snapshot: Awaited<ReturnType<typeof readRenderedDiff>>, 
         .filter((line) => line.type === "change-deletion")
         .map((line) => line.number),
     ).toEqual([5, 6]);
+    if (style === "editor") {
+      // editor 档是 VSCode 编辑器模式：旧代码行折叠成细条且文本不可见，
+      // 行号格左缘逐行色条标记变更（蓝=修改、绿=纯新增、红=删除位置）。
+      const contextLine = snapshot.unifiedLines.find(
+        (line) => line.type !== "change-addition" && line.type !== "change-deletion",
+      );
+      const additionLines = snapshot.unifiedLines.filter((line) => line.type === "change-addition");
+      const editorDeletionLines = snapshot.unifiedLines.filter(
+        (line) => line.type === "change-deletion",
+      );
+      // 行背景熄灭合同保留：增删行与上下文行背景一致。
+      for (const line of [...additionLines, ...editorDeletionLines]) {
+        expect(line.background).toBe(contextLine!.background);
+      }
+      // 删除行折叠：盒子保留（概览条仍可测量）但高度远小于正常行，旧代码文本不可见。
+      const normalHeight = Math.max(
+        ...snapshot.unifiedLines
+          .filter((line) => line.type !== "change-deletion")
+          .map((line) => line.height),
+      );
+      for (const line of editorDeletionLines) {
+        expect(line.height).toBeLessThan(normalHeight / 3);
+      }
+      // 折叠必须发生在行轨道上，而不是留下旧代码高度的空白：细条紧贴上一行，
+      // 后续上下文紧跟最后一个新增行（fixture：上下文 4 → 删除 5,6 → 新增 5,6,7 → 上下文 8）。
+      const lineAt = (number: number, type: string) =>
+        snapshot.unifiedLines.find((line) => line.number === number && line.type === type);
+      const contextBefore = lineAt(4, "context");
+      const firstDeletion = lineAt(5, "change-deletion");
+      const lastAddition = lineAt(7, "change-addition");
+      const contextAfter = lineAt(8, "context");
+      expect(contextBefore).toBeTruthy();
+      expect(firstDeletion).toBeTruthy();
+      expect(lastAddition).toBeTruthy();
+      expect(contextAfter).toBeTruthy();
+      expect(
+        Math.abs(firstDeletion!.top - (contextBefore!.top + contextBefore!.height)),
+      ).toBeLessThan(3);
+      expect(Math.abs(contextAfter!.top - (lastAddition!.top + lastAddition!.height))).toBeLessThan(
+        3,
+      );
+      // fixture：旧 5、6 行被替换为新 5、6、7 行 → 新 5、6 与删除配对（蓝），
+      // 新 7 为纯新增（绿），上下文行无色条；删除位置细条为红色，与蓝/绿不同。
+      const markOf = (number: number) => additionLines.find((line) => line.number === number)?.mark;
+      const modifiedMark = markOf(5);
+      expect(modifiedMark).toBeTruthy();
+      expect(markOf(6)).toBe(modifiedMark);
+      const pureAdditionMark = markOf(7);
+      expect(pureAdditionMark).toBeTruthy();
+      expect(pureAdditionMark).not.toBe(modifiedMark);
+      expect(contextLine?.mark).toBe("rgba(0, 0, 0, 0)");
+      const deletionMark = editorDeletionLines[0]?.mark;
+      expect(deletionMark).toBeTruthy();
+      expect(deletionMark).not.toBe(modifiedMark);
+      expect(deletionMark).not.toBe(pureAdditionMark);
+    }
   }
   const lines = style === "split" ? snapshot.additionLines : snapshot.unifiedLines;
   expect(

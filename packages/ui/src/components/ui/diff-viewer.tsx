@@ -13,6 +13,7 @@ import { MultiFileDiff, PatchDiff } from "@pierre/diffs/react";
 
 import { cn } from "@/components/lib/utils.js";
 import { DIFFS_PREFERRED_HIGHLIGHTER } from "@/lib/diffsHighlighterEngine.js";
+import { buildEditorViewMarksCss } from "@/lib/editorViewDiffMarks.js";
 
 type DiffViewerStyle = CSSProperties & {
   "--diffs-bg"?: string;
@@ -35,7 +36,41 @@ const DIFF_SPLIT_REVERSE_UNSAFE_CSS = [
   "[data-overflow=wrap] [data-deletions] [data-content]{grid-column:4;border-right:0}",
 ].join("");
 
-export type DiffViewerDiffStyle = "unified" | "split";
+// editor 视觉模式：像 VSCode 编辑器一样阅读当前文件全文，不在行背景上铺增删色。
+// @pierre/diffs 的行背景、行号背景与逐词高亮都由 CSS 变量驱动，全部指回
+// --diffs-bg 即可"熄灭"；行号也恢复普通前景色，避免沿用增删行的强调色号。
+// 选择器与库内增删规则一致，后注入同优先级胜出。删除行折叠与逐行色条见下方
+// DIFF_EDITOR_MARKS_CSS。
+const DIFF_EDITOR_UNSAFE_CSS = [
+  "[data-line-type=change-addition]:is([data-gutter-buffer],[data-column-number],[data-line],[data-no-newline]){--diffs-line-bg:var(--diffs-bg);--diffs-diff-line-mix-target:var(--diffs-bg);color:var(--diffs-fg-number)}",
+  "[data-line-type=change-deletion]:is([data-gutter-buffer],[data-column-number],[data-line],[data-no-newline]){--diffs-line-bg:var(--diffs-bg);--diffs-diff-line-mix-target:var(--diffs-bg);color:var(--diffs-fg-number)}",
+  "[data-line-type=change-addition] del,[data-line-type=change-addition] ins{background:transparent;color:inherit;text-decoration:none}",
+  "[data-line-type=change-deletion] del,[data-line-type=change-deletion] ins{background:transparent;color:inherit;text-decoration:none}",
+].join("");
+
+// editor 档的逐行变更标识：库的 gutter 色条按"连续同类行 run"合并成单个元素，
+// 无法区分同一段落里的修改行与纯新增行，因此隐藏后改在逐行的行号格上重绘。
+// 删除行不显示旧代码文本，原地折叠为细红条；盒子保留非零高度（不用 display:none），
+// 概览条测量、选区映射和已有注解仍能按行定位。
+const DIFF_EDITOR_COLLAPSED_LINE_HEIGHT_PX = 4;
+const DIFF_EDITOR_MARKS_CSS = [
+  // 隐藏 run 合并的库色条；annotation（评论锚点背景）与 metadata（\ No newline）不在其列。
+  '[data-gutter-buffer="buffer"]{display:none}',
+  '[data-line-type="change-deletion"][data-gutter-buffer]{display:none}',
+  // 删除行折叠：行号格与正文行都压到细条高度，文本不再可见。
+  `[data-line-type="change-deletion"]:is([data-line],[data-no-newline]){height:${DIFF_EDITOR_COLLAPSED_LINE_HEIGHT_PX}px;min-height:0;line-height:0;font-size:0;overflow:hidden;color:transparent;background:transparent}`,
+  `[data-line-type="change-deletion"][data-column-number]{height:${DIFF_EDITOR_COLLAPSED_LINE_HEIGHT_PX}px;min-height:0;line-height:0;font-size:0;overflow:hidden;color:transparent}`,
+  '[data-line-type="change-deletion"] [data-line-number-content]{display:none}',
+  // 行号格左缘逐行色条：绿=新增、红=删除位置；修改行（蓝）由 editorModifiedLines 生成。
+  "[data-column-number]{position:relative}",
+  '[data-column-number]::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:transparent}',
+  '[data-line-type="change-addition"][data-column-number]::before{background:var(--diffs-addition-base)}',
+  '[data-line-type="change-deletion"][data-column-number]::before{background:var(--diffs-deletion-base)}',
+].join("");
+
+const NO_EDITOR_MODIFIED_LINES: readonly number[] = [];
+
+export type DiffViewerDiffStyle = "unified" | "split" | "editor";
 
 type DiffViewerPatchInput = {
   patch: string;
@@ -61,8 +96,13 @@ export type DiffViewerProps = Omit<HTMLAttributes<HTMLDivElement>, "children"> &
     selectedLines?: DiffViewerSelectedLineRange | null;
     lineAnnotations?: DiffLineAnnotation[];
     renderAnnotation?: (annotation: DiffLineAnnotation) => ReactNode;
-    /** diff 布局：unified 单栏（默认，保持既有调用方行为）或 split 双栏。 */
+    /** diff 布局：unified 单栏（默认，保持既有调用方行为）、split 双栏或 editor 视觉模式。 */
     diffStyle?: DiffViewerDiffStyle;
+    /**
+     * editor 档的"修改行"（与删除配对的新版行号，1 基）。调用方用
+     * parseDiffFromFile 配对计算；缺省时新增行一律绿色，无蓝/绿区分。
+     */
+    editorModifiedLines?: readonly number[];
     /** 展开全部未修改上下文行（仅 MultiFileDiff 全文渲染有意义）。 */
     expandUnchanged?: boolean;
     /** 长行处理：scroll 横向滚动（默认）或 wrap 折行。 */
@@ -97,6 +137,7 @@ function DiffViewerComponent(props: DiffViewerProps) {
     lineAnnotations,
     renderAnnotation,
     diffStyle = "unified",
+    editorModifiedLines = NO_EDITOR_MODIFIED_LINES,
     expandUnchanged = false,
     overflow = "scroll",
     splitReverse = false,
@@ -121,19 +162,25 @@ function DiffViewerComponent(props: DiffViewerProps) {
   );
   const options = useMemo<FileDiffOptions<undefined>>(
     () => ({
-      diffStyle,
+      // editor 是 unified 单栏之上的视觉变体：整文件阅读，仅 gutter 色条标记增删。
+      diffStyle: diffStyle === "editor" ? "unified" : diffStyle,
       diffIndicators: "bars",
       disableFileHeader: true,
       // PatchDiff 只有 patch 里的局部上下文，未包含完整 before/after 内容。
       // 使用 simple 避免展示无法点击展开的 “unmodified lines”；MultiFileDiff 保留可展开提示。
       hunkSeparators: rendersPatch ? "simple" : "line-info",
       expandUnchanged: rendersPatch ? false : expandUnchanged,
-      lineDiffType: "word-alt",
+      // editor 模式逐词高亮也属于"改动噪音"，与行背景一起关闭，保持编辑器观感。
+      lineDiffType: diffStyle === "editor" ? "none" : "word-alt",
       overflow,
       unsafeCSS:
-        splitReverse && diffStyle === "split"
-          ? DIFF_SPLIT_REVERSE_UNSAFE_CSS
-          : DIFF_VIEWER_UNSAFE_CSS,
+        diffStyle === "editor"
+          ? DIFF_EDITOR_UNSAFE_CSS +
+            DIFF_EDITOR_MARKS_CSS +
+            buildEditorViewMarksCss(editorModifiedLines)
+          : splitReverse && diffStyle === "split"
+            ? DIFF_SPLIT_REVERSE_UNSAFE_CSS
+            : DIFF_VIEWER_UNSAFE_CSS,
       // @pierre/diffs 的 code 节点在 Shadow DOM 内，外层 Tailwind class 无法命中；
       // 需要覆盖其内部样式时走 unsafeCSS 注入，且只做最小覆盖，不做大范围样式重写。
       theme:
@@ -155,6 +202,7 @@ function DiffViewerComponent(props: DiffViewerProps) {
     [
       darkTheme,
       diffStyle,
+      editorModifiedLines,
       enableGutterUtility,
       enableLineSelection,
       expandUnchanged,
@@ -230,6 +278,7 @@ function omitPatchDiffProps({
   lineAnnotations: _lineAnnotations,
   renderAnnotation: _renderAnnotation,
   diffStyle: _diffStyle,
+  editorModifiedLines: _editorModifiedLines,
   expandUnchanged: _expandUnchanged,
   overflow: _overflow,
   splitReverse: _splitReverse,
@@ -258,6 +307,7 @@ function omitMultiFileDiffProps({
   lineAnnotations: _lineAnnotations,
   renderAnnotation: _renderAnnotation,
   diffStyle: _diffStyle,
+  editorModifiedLines: _editorModifiedLines,
   expandUnchanged: _expandUnchanged,
   overflow: _overflow,
   splitReverse: _splitReverse,

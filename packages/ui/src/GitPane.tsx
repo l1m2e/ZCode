@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/resizable.js";
 import {
   Columns2Icon,
+  FilePenLineIcon,
   FileTextIcon,
   PanelLeftIcon,
   RectangleHorizontalIcon,
@@ -431,8 +432,14 @@ export function GitPane({
     }
   };
 
+  // 单/双栏/编辑器视图三态循环；顺序与按钮 title 消息一一对应。
+  const GIT_REVIEW_DIFF_STYLE_CYCLE = {
+    split: "unified",
+    unified: "editor",
+    editor: "split",
+  } as const;
   const handleToggleDiffStyle = () => {
-    const nextDiffStyle = gitReviewSettings.diffStyle === "split" ? "unified" : "split";
+    const nextDiffStyle = GIT_REVIEW_DIFF_STYLE_CYCLE[gitReviewSettings.diffStyle];
     logger.info(`[GitPane] 切换 diff 展示模式 diffStyle=${nextDiffStyle}`);
     setGitReviewSettings({ diffStyle: nextDiffStyle });
   };
@@ -521,7 +528,7 @@ export function GitPane({
   );
 
   const hasChanges = currentChanges.length > 0;
-  const diffStyleIsSplit = gitReviewSettings.diffStyle === "split";
+  const diffStyle = gitReviewSettings.diffStyle;
   const showListColumn =
     hasChanges && (isNarrowPane ? narrowView === "list" : gitReviewSettings.fileListVisible);
   const showContentColumn = hasChanges && (!isNarrowPane || narrowView === "content");
@@ -572,15 +579,27 @@ export function GitPane({
             size="icon-sm"
             data-testid={TID_GIT_REVIEW_DIFF_STYLE_TOGGLE}
             title={intl.formatMessage({
-              id: diffStyleIsSplit ? "git.review.diffStyleUnified" : "git.review.diffStyleSplit",
+              id:
+                diffStyle === "split"
+                  ? "git.review.diffStyleUnified"
+                  : diffStyle === "unified"
+                    ? "git.review.diffStyleEditor"
+                    : "git.review.diffStyleSplit",
             })}
             aria-label={intl.formatMessage({
-              id: diffStyleIsSplit ? "git.review.diffStyleUnified" : "git.review.diffStyleSplit",
+              id:
+                diffStyle === "split"
+                  ? "git.review.diffStyleUnified"
+                  : diffStyle === "unified"
+                    ? "git.review.diffStyleEditor"
+                    : "git.review.diffStyleSplit",
             })}
             onClick={handleToggleDiffStyle}
           >
-            {diffStyleIsSplit ? (
+            {diffStyle === "split" ? (
               <Columns2Icon className="size-4" />
+            ) : diffStyle === "editor" ? (
+              <FilePenLineIcon className="size-4" />
             ) : (
               <RectangleHorizontalIcon className="size-4" />
             )}

@@ -29,6 +29,7 @@ import {
   getGitPaneDiffPreviewPlan,
 } from "@/GitPane/helpers.js";
 import type { GitPaneFileChange } from "@/hooks/useGitRepository.js";
+import { computeEditorViewModifiedLines } from "@/lib/editorViewDiffMarks.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import type { GitDiffDisplayStyle } from "@/lib/gitReviewSettings.js";
 import type { CodePreviewSettings } from "@/lib/codePreviewSettings.js";
@@ -111,8 +112,8 @@ export function GitPaneDiffContent({
   const [draftCommentValue, setDraftCommentValue] = useState("");
   const [selectionError, setSelectionError] = useState<string | null>(null);
   const diffPreviewPlan = useMemo(
-    () => getGitPaneDiffPreviewPlan(diffState, preferFullContent),
-    [diffState, preferFullContent],
+    () => getGitPaneDiffPreviewPlan(diffState, preferFullContent, diffStyle),
+    [diffState, preferFullContent, diffStyle],
   );
   const commentablePatch = useMemo(
     () =>
@@ -143,6 +144,12 @@ export function GitPaneDiffContent({
       },
     };
   }, [afterContent, beforeContent, change.workspaceRelativePath]);
+  // editor 档的修改行（蓝）标识：与 MultiFileDiff 内部相同的 parseDiffFromFile 配对，
+  // 只在 editor + 全文路径计算；patch-only 降级保持全绿，不做蓝/绿区分。
+  const editorModifiedLines = useMemo(() => {
+    if (diffStyle !== "editor" || !multiFileDiffFiles) return [];
+    return computeEditorViewModifiedLines(multiFileDiffFiles.oldFile, multiFileDiffFiles.newFile);
+  }, [diffStyle, multiFileDiffFiles]);
   const canCommentOnDiff =
     ((diffPreviewPlan.kind === "rich" && multiFileDiffFiles !== null) ||
       commentablePatch !== null) &&
@@ -401,6 +408,7 @@ export function GitPaneDiffContent({
                 oldFile={multiFileDiffFiles.oldFile}
                 newFile={multiFileDiffFiles.newFile}
                 diffStyle={diffStyle}
+                editorModifiedLines={editorModifiedLines}
                 expandUnchanged
                 overflow={diffOverflow}
                 splitReverse={diffStyle === "split"}

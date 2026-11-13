@@ -201,10 +201,24 @@ export function shouldRenderPatchOnlyGitDiffPreview(diff: GitDiffResult): boolea
 export function getGitPaneDiffPreviewPlan(
   diff: GitDiffResult | null,
   preferFullContent = false,
+  diffStyle: "unified" | "split" | "editor" = "split",
 ): GitPaneDiffPreviewPlan {
   // 会话审查已取得历史全文时，旧行数阈值不应再把全文变成局部 hunk 并关闭评论。
   if (
     preferFullContent &&
+    diff?.availability === "patch" &&
+    diff.beforeContent !== null &&
+    diff.afterContent !== null
+  ) {
+    return { kind: "rich" };
+  }
+  // editor 档以"当前文件全文 + 左缘色条"为阅读基准：降级成局部 hunk 会让用户
+  // 看不到完整代码，与本视图目的相悖。整文件渲染是该模式的核心语义，
+  // 因此只要 before/after 完整就直接渲染整文件，不再经过 rich 阈值与
+  // patch 体积预检——后者判断的是"patch 能否安全交给 PatchDiff"，而全文渲染
+  // 根本不读 patch，用它挡 editor 会让大文件永远看不到完整内容。
+  if (
+    diffStyle === "editor" &&
     diff?.availability === "patch" &&
     diff.beforeContent !== null &&
     diff.afterContent !== null
