@@ -7510,6 +7510,7 @@ export function createZCodeAgentService(
           target: params.target,
           baseRevision: params.baseRevision,
           baseLogEpoch: params.baseLogEpoch,
+          ...(params.contentPath !== undefined ? { contentPath: params.contentPath } : {}),
         },
         v4ConversationFileChangesResultSchema,
       );

@@ -112,6 +112,8 @@ import {
   type AssistantCodeCommentCard,
 } from "@/lib/assistantCodeComment.js";
 import { resolveToolCallIdentity } from "@/lib/toolIdentity.js";
+import type { CodeViewerSource } from "@/lib/codeViewer.js";
+import { withHistoricalDiffSource } from "@/lib/codeViewerSource.js";
 import {
   isConversationReasoningRowVisible,
   type ConversationRowRenderContext,
@@ -1765,6 +1767,38 @@ const ToolCallRowView = memo(function ToolCallRowView({
   // toolCall 行回接 ToolCallBlocks（execute/read/edit/... renderer 按
   // tool identity 分流）。适配 memo 按 row 引用：row.delta/upserted 换新对象才重建。
   const toolCallNode = useMemo(() => toolCallRowToLegacyNode(row), [row]);
+  const {
+    onOpenCodeViewer,
+    sessionId: sourceSessionId,
+    workspacePath,
+    workspaceIdentity,
+    workspaceRemoteSessionId,
+  } = context;
+  const openToolCodeViewer = useCallback(
+    (source: CodeViewerSource) => {
+      onOpenCodeViewer?.(
+        withHistoricalDiffSource(
+          source,
+          {
+            sessionId: sourceSessionId,
+            workspacePath,
+            workspaceIdentity,
+            workspaceRemoteSessionId,
+          },
+          { rowId: row.rowId, entityId: row.entityId },
+        ),
+      );
+    },
+    [
+      onOpenCodeViewer,
+      sourceSessionId,
+      workspacePath,
+      workspaceIdentity,
+      workspaceRemoteSessionId,
+      row.rowId,
+      row.entityId,
+    ],
+  );
   // workflow run 详情入口的门控：run 身份走 workflowRuns 投影（schema 里 toolCallId 就是
   // 「工具卡 → 详情页的关联键」），不从工具输出里读——v4 行的 output 只剩一句散文。
   // 命中的摘要同时决定卡片形态：有 run 就是紧凑可点卡，没有就是可展开卡。
@@ -1903,7 +1937,7 @@ const ToolCallRowView = memo(function ToolCallRowView({
           theme={context.theme}
           codePreviewSettings={context.codePreviewSettings}
           showTodoToolCalls={context.messageStreamShowTodos === true}
-          onOpenCodeViewer={context.onOpenCodeViewer}
+          onOpenCodeViewer={onOpenCodeViewer ? openToolCodeViewer : undefined}
           onOpenFileLink={context.onOpenFileLink}
           onOpenBrowserUrl={context.onOpenBrowserUrl}
           onOpenAutomationsMain={context.onOpenAutomationsMain}

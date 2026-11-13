@@ -318,6 +318,7 @@ export function getAssistantSummaryChangeFiles(
   workspacePath?: string,
 ) {
   const files = new Map<string, ReturnType<typeof readRawToolCallFileSummaries>[number]>();
+  const sourceRows = new Map<string, { row: ToolCallRow; contentPath: string }>();
   let unresolved = 0;
   for (const item of items) {
     const category = getAssistantSummaryToolCategory(item.row);
@@ -327,8 +328,12 @@ export function getAssistantSummaryChangeFiles(
     if (!summaries.length) unresolved++;
     for (const file of summaries) {
       const path = summaryFilePath(file.path, workspacePath);
-      if (!files.has(path)) files.set(path, { ...file, path });
+      if (!files.has(path)) {
+        files.set(path, { ...file, path });
+        // path 去重时必须把 patch 和实际来源 row 成对保留，组尾不一定修改过该文件。
+        sourceRows.set(path, { row: item.row, contentPath: file.path });
+      }
     }
   }
-  return files.size ? { files: [...files.values()], unresolved } : undefined;
+  return files.size ? { files: [...files.values()], sourceRows, unresolved } : undefined;
 }

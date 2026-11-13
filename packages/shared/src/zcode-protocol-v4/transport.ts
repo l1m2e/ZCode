@@ -618,9 +618,23 @@ export const v4ConversationFileChangesParamsSchema = z
     target: conversationRowTargetSchema,
     baseRevision: z.number().int().nonnegative(),
     baseLogEpoch: z.string().trim().min(1),
+    // 只筛选已授权的历史记录路径，不是读取当前文件或任意 artifact 的入口。
+    contentPath: z.string().min(1).optional(),
   })
   .strict();
 export type V4ConversationFileChangesParams = z.infer<typeof v4ConversationFileChangesParamsSchema>;
+
+export const v4ConversationFileChangeContentSchema = z.discriminatedUnion("status", [
+  z
+    .object({
+      status: z.literal("available"),
+      beforeContent: z.string(),
+      afterContent: z.string(),
+    })
+    .strict(),
+  z.object({ status: z.literal("unavailable") }).strict(),
+]);
+export type V4ConversationFileChangeContent = z.infer<typeof v4ConversationFileChangeContentSchema>;
 
 export const v4ConversationFileChangesResultSchema = z
   .object({
@@ -637,6 +651,7 @@ export const v4ConversationFileChangesResultSchema = z
           writeCount: z.number().int().nonnegative(),
           toolNames: z.array(z.string()),
           patches: z.array(readonlyDiffHunkSchema),
+          content: v4ConversationFileChangeContentSchema.optional(),
         })
         .strict(),
     ),

@@ -2,6 +2,8 @@
 import type { GitPane } from "@/GitPane.js";
 import type { GitPaneDiffContent } from "./GitPaneDiffContent.js";
 
+export { DiffPreviewContent } from "./DiffPreviewContent.js";
+
 export type GitPaneProps = Parameters<typeof GitPane>[0];
 export type GitPaneDiffContentProps = Parameters<typeof GitPaneDiffContent>[0];
 export type { GitPaneFileListProps } from "./GitPaneFileList.js";

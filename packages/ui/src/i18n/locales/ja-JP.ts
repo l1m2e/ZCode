@@ -2280,6 +2280,16 @@ const jaJP: Record<string, string> = {
   "fileManager.hideNavigation": "ファイルナビゲーションを非表示",
   "fileManager.empty": "ナビゲーションからファイルを選択してください",
   "codeViewer.title": "コードビューアー",
+  "codeViewer.history.waiting":
+    "履歴の全文を読み込むため、元のワークスペースへの接続を待っています。",
+  "codeViewer.history.loading": "この変更前後のファイル全文を読み込んでいます。",
+  "codeViewer.history.missing-reference":
+    "このプレビューには履歴の参照情報がありません。保存済みの部分的な差分のみを表示しています。",
+  "codeViewer.history.unavailable":
+    "この記録の履歴全文は利用できません。保存済みの部分的な差分のみを表示しています。",
+  "codeViewer.history.error":
+    "履歴全文の読み込みに失敗しました。保存済みの部分的な差分のみを表示しています。",
+  "codeViewer.history.retry": "再読み込み",
   "git.review.selectAvailableLines":
     "選択範囲に利用できない行や省略された行が含まれています。表示中の連続したコード行を選択してください。",
   "codeViewer.close": "コードビューアーを閉じる",

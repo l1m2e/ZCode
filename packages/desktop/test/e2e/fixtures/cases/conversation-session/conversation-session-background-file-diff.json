@@ -10,7 +10,7 @@
     {
       "path": "background-file-diff-e2e/result.md",
       "source": "created-by-spec",
-      "description": "spec 在默认工作区创建的单行 Markdown；notification product turn Read 后由 Edit 做 +1/-1 替换。"
+      "description": "spec 创建带稳定首尾标记的 1205 行 Markdown；notification product turn Read/Edit 做 +1/-1 替换。后续磁盘改写后，Review 仍默认展开完整历史并支持精确选行评论进入未发送 composer。"
     }
   ],
   "requests": [

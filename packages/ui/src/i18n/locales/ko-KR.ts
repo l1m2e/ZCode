@@ -2213,6 +2213,16 @@ const koKR: Record<string, string> = {
   "fileManager.hideNavigation": "파일 탐색 숨기기",
   "fileManager.empty": "탐색에서 파일을 선택하세요",
   "codeViewer.title": "코드 뷰어",
+  "codeViewer.history.waiting":
+    "전체 기록 내용을 불러오기 위해 원본 작업 공간 연결을 기다리는 중입니다.",
+  "codeViewer.history.loading": "이 변경 전후의 전체 파일 내용을 불러오는 중입니다.",
+  "codeViewer.history.missing-reference":
+    "이 미리 보기에는 기록 참조가 없습니다. 저장된 부분 차이만 표시합니다.",
+  "codeViewer.history.unavailable":
+    "이 기록의 전체 내용을 사용할 수 없습니다. 저장된 부분 차이만 표시합니다.",
+  "codeViewer.history.error":
+    "전체 기록 내용을 불러오지 못했습니다. 저장된 부분 차이만 표시합니다.",
+  "codeViewer.history.retry": "다시 불러오기",
   "git.review.selectAvailableLines":
     "선택 범위에 사용할 수 없거나 생략된 줄이 포함되어 있습니다. 표시된 연속 코드 줄을 다시 선택하세요.",
   "codeViewer.close": "코드 뷰어 닫기",

@@ -174,9 +174,11 @@ async function readConversationFileChanges(
   sessionId: string,
   messageIds: readonly string[],
   targetTurnId?: TurnId | null,
+  options?: { contentPath?: string; toolCallId?: string },
 ): Promise<V4ConversationFileChangesResult> {
   const events = await record.eventStore.getEvents(sessionId as SessionId);
   return readConversationFileChangesFromEvents({
+    ...options,
     events,
     messageIds,
     readArtifact: async (snapshotRef) =>
@@ -2046,12 +2048,18 @@ export function createConversationV4Gateway(
       }
       return record.app.resolvePromptAttachmentPreviewSource(input);
     },
-    getConversationFileChanges: async (sessionId, _targetRowId, messageIds, targetTurnId) => {
+    getConversationFileChanges: async (
+      sessionId,
+      _targetRowId,
+      messageIds,
+      targetTurnId,
+      options,
+    ) => {
       const record = await resolveConversationBackingRecord(context, sessionId);
       if (!record) {
         throw new Error(`fault.fileChanges.sessionNotFound: ${sessionId}`);
       }
-      return readConversationFileChanges(record, sessionId, messageIds, targetTurnId);
+      return readConversationFileChanges(record, sessionId, messageIds, targetTurnId, options);
     },
     // dwf 事件日志：能力在 app 上（run service 构造成功才有），缺席时不在这里兜底成空页——
     // gateway 会回结构化的能力不支持错误，让 renderer 能区分"没有事件"与"没有这个能力"。
