@@ -1394,6 +1394,7 @@ export function AnimatedSidePanePanel({
                             onClose={onCloseGit}
                             onRefresh={onRefreshGit}
                             onRevealFileInTree={onRevealGitFileInTree}
+                            onOpenCodeViewer={onOpenCodeViewer}
                           />
                         ) : tab.type === "treemapping" ? (
                           <TreemappingPane
