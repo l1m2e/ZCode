@@ -1,4 +1,5 @@
 import { buildEditCodeViewerSource } from "@/ToolCallBlocks/renderers/edit.js";
+import { withHistoricalDiffSource } from "@/lib/codeViewerSource.js";
 import { CollapsedChangeSummary } from "@/ToolCallBlocks/renderers.js";
 import { SummaryGroupBoundaryContext } from "@/v4/conversationRowContext.js";
 import { ConsecutiveSummaryGroup } from "@/ToolCallBlocks/ToolSummaryRow.js";
@@ -358,7 +359,20 @@ function ConversationAssistantWorkContent({
                     basePath={context.workspacePath}
                     onOpenFile={
                       context.onOpenCodeViewer
-                        ? (file) => context.onOpenCodeViewer?.(buildEditCodeViewerSource(file))
+                        ? (file) => {
+                            const source = buildEditCodeViewerSource(file);
+                            const sourceRow = changes.sourceRows.get(file.path);
+                            context.onOpenCodeViewer?.(
+                              sourceRow
+                                ? withHistoricalDiffSource(
+                                    source,
+                                    context,
+                                    sourceRow.row,
+                                    sourceRow.contentPath,
+                                  )
+                                : source,
+                            );
+                          }
                         : undefined
                     }
                   />

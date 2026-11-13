@@ -555,6 +555,7 @@ export interface ZCodeAgentConversationFileChangesParams extends ZCodeAgentSessi
   target: ConversationRowTarget;
   baseRevision: number;
   baseLogEpoch: string;
+  contentPath?: string;
 }
 
 export interface ZCodeAgentConversationFileRewindPreviewParams extends ZCodeAgentSessionTarget {

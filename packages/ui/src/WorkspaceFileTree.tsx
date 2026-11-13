@@ -29,7 +29,15 @@ type FileManagerPaneProps = Omit<ComponentProps<typeof PreviewPane>, "source"> &
   onNavigate: (source: CodeViewerSource) => void;
 };
 
-export function FileManagerPane({
+export function FileManagerPane(props: FileManagerPaneProps) {
+  // 历史 diff 只展示该次变更，不能受文件目录的工作区显隐偏好影响。
+  if (props.source?.type === "patch" || props.source?.type === "multi-file-diff") {
+    return <PreviewPane {...props} source={props.source} />;
+  }
+  return <FileManagerContent {...props} />;
+}
+
+function FileManagerContent({
   source,
   target,
   mobileOverlay,

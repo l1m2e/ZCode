@@ -21,6 +21,14 @@
 - `packages/ui/src/ToolCallBlocks/ToolCallBody.tsx`
   - 负责通用参数、结果、文件和 Markdown 预览
 
+## 编辑文件 diff 入口
+
+- 会话中点击编辑文件名或摘要 Review 仍打开该次记录提供的 diff source，工具行自身的展开行为保持不变。预览复用审查的内容展示，隐藏文件目录；默认新版左、旧版右，可切单栏，遵循全局字体与换行，显示实际渲染范围的变更概览。
+- patch source 仅附加 `{ conversation: { sessionId, target: { rowId, entityId }, contentPath } }` 与来源 workspace scope；`contentPath` 保留历史 artifact 的原始路径字符串（可能相对），不随显示路径解码/绝对化改写；普通 Read / file 入口不变。工具文件名引用该 tool row，回合 Review 引用 turnHeader；折叠组按文件去重时连同选中的 patch 保存同一个来源 row，不能借用组尾工具。历史引用参与 tab 身份，查看当前源码时剥离引用。
+- 打开预览后经 UI hook 调用既有 `fileChanges` 的 `contentPath` 只读路径；从来源 workspace 的真实连接取得 session lease 与当前 revision/logEpoch，不依赖预览所在 V4 provider，也不复用普通 summary 缓存。连接未就绪时明确显示等待；authority 过期通过已有 store 恢复后有限重取；切换来源、连接或卸载后旧响应不得写入。
+- 只有历史接口返回完整 before/after，或 source 已提供完整 pair 时展开全文；全文只保留在预览展示状态，不写入持久 tab source。不读取当前磁盘或当前 Git 补历史版本。旧 source 缺引用、历史内容不可用和读取失败均保留 patch，并分别显示五语言说明。
+- 验收维护实际工具文件名、回合 Review 与折叠组文件入口；同路径同 patch 不同 row 独立 tab；重连恢复、快速切换 source、历史记录缺版本、普通 Read 和查看当前源码；完整 pair 采用统一 diff 模式与滚动/评论草稿生命周期。自动交互按用户要求不执行，运行时验证由主任务统一安排。
+
 ## 工具展示层级
 
 - 当前连续摘要按“跨类型连续摘要分组”规则展示；组内保留真实 row 顺序、状态与展开记忆。
