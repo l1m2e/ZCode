@@ -131,7 +131,10 @@ export function LightweightDiffPreview({
           !codePreviewSettings.wrapLongLines && "w-max",
         )}
         data-lightweight-diff-scroll-content
-        style={{ fontSize: codePreviewSettings.fontSizePx }}
+        style={{
+          fontSize: codePreviewSettings.fontSizePx,
+          fontFamily: "var(--code-font-family, var(--font-mono))",
+        }}
       >
         {lines.map((line, index) => {
           const omittedLineCount = parseTruncatedMarkerOmittedLineCount(line);
@@ -167,6 +170,7 @@ export function LightweightDiffPreview({
                 </span>
               ) : null}
               <code
+                style={{ fontFamily: "inherit" }}
                 className={cn(
                   "block flex-1 px-3",
                   codePreviewSettings.wrapLongLines

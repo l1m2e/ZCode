@@ -1,3 +1,5 @@
+import type { SystemFontsResult } from "@zcode/shared";
+
 export interface BrowserReadableStorageLike {
   getItem(key: string): string | null;
 }
@@ -18,9 +20,7 @@ function getLocalStorageCandidate(): unknown {
   }
 }
 
-function isBrowserReadableStorageLike(
-  storage: unknown,
-): storage is BrowserReadableStorageLike {
+function isBrowserReadableStorageLike(storage: unknown): storage is BrowserReadableStorageLike {
   return (
     Boolean(storage) &&
     typeof (storage as Partial<BrowserReadableStorageLike>).getItem === "function"
@@ -77,4 +77,31 @@ export function readNavigatorLanguage(): string | null {
   }
 
   return navigator.language;
+}
+
+/** Desktop/Web 共用当前显示设备的字体枚举；不能通过远控代理读取另一台设备的字体。 */
+export async function queryBrowserSystemFonts(): Promise<SystemFontsResult> {
+  if (typeof window === "undefined") return { status: "unsupported" };
+  const fontWindow = window as Window & { queryLocalFonts?: () => Promise<unknown> };
+  if (!fontWindow.queryLocalFonts) return { status: "unsupported" };
+  try {
+    const entries = await fontWindow.queryLocalFonts();
+    if (!Array.isArray(entries)) return { status: "error" };
+    const families = new Set<string>();
+    for (const entry of entries) {
+      if (!entry || typeof entry !== "object" || !("family" in entry)) continue;
+      const family: unknown = entry.family;
+      if (typeof family !== "string") continue;
+      const trimmed = family.trim();
+      if (trimmed && trimmed.length <= 256 && !/\p{Cc}/u.test(trimmed)) {
+        families.add(trimmed);
+      }
+    }
+    return { status: "available", families: [...families].sort((a, b) => a.localeCompare(b)) };
+  } catch (error) {
+    const denied =
+      error instanceof Error &&
+      (error.name === "NotAllowedError" || error.name === "SecurityError");
+    return { status: denied ? "denied" : "error" };
+  }
 }

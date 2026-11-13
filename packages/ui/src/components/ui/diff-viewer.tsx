@@ -69,7 +69,7 @@ function DiffViewerComponent(props: DiffViewerProps) {
       "--diffs-light-bg": "var(--color-background)",
       "--diffs-dark-bg": "var(--color-background)",
       // 完整 diff 运行在 @pierre/diffs Shadow DOM 中，不会自动继承外层 font-mono class。
-      "--diffs-font-family": "var(--font-mono)",
+      "--diffs-font-family": "var(--code-font-family, var(--font-mono))",
       "--diffs-font-size": `${fontSizePx}px`,
       ...style,
     }),
