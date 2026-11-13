@@ -4222,6 +4222,18 @@ const enUS: Record<string, string> = {
   "settings.showLineNumbersDescription": "Display line numbers in code and diff views.",
   "settings.wrapLongLines": "Wrap long lines",
   "settings.wrapLongLinesDescription": "Wrap long code lines automatically.",
+  "settings.codeFontFamily": "Code font",
+  "settings.codeFontFamilyDescription":
+    "Choose a font installed on this device for code blocks, file previews, and diffs.",
+  "settings.codeFontFamilyDefault": "Default monospace",
+  "settings.codeFontFamilyUnsupported": "This browser cannot list system fonts.",
+  "settings.codeFontFamilyDenied":
+    "Font access was not allowed. Allow font access, then reopen this menu.",
+  "settings.codeFontFamilyError": "Could not load system fonts. Reopen this menu to try again.",
+  "settings.codeFontFamilyEmpty": "No available system fonts were found.",
+  "settings.codeFontFamilyMissing": "Not installed",
+  "settings.codeFontFamilySearch": "Search fonts…",
+  "settings.codeFontFamilyNoMatches": "No matching fonts",
   "settings.fontSize": "Code font size",
   "settings.fontSizeDescription":
     "Adjust the default font size for code blocks, file previews, and diff views.",

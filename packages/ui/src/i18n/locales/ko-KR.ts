@@ -3874,6 +3874,19 @@ const koKR: Record<string, string> = {
   "settings.showLineNumbersDescription": "코드 및 Diff 보기에 줄 번호를 표시합니다.",
   "settings.wrapLongLines": "긴 줄 바꿈",
   "settings.wrapLongLinesDescription": "긴 코드 줄을 자동으로 줄 바꿈합니다.",
+  "settings.codeFontFamily": "코드 글꼴",
+  "settings.codeFontFamilyDescription":
+    "이 기기에 설치된 글꼴을 선택하여 코드 블록, 파일 미리 보기 및 Diff에 사용합니다.",
+  "settings.codeFontFamilyDefault": "기본 고정폭 글꼴",
+  "settings.codeFontFamilyUnsupported": "이 브라우저는 시스템 글꼴 목록을 지원하지 않습니다.",
+  "settings.codeFontFamilyDenied":
+    "글꼴 접근이 허용되지 않았습니다. 접근을 허용한 후 메뉴를 다시 열어 주세요.",
+  "settings.codeFontFamilyError":
+    "시스템 글꼴을 불러오지 못했습니다. 메뉴를 다시 열어 시도해 주세요.",
+  "settings.codeFontFamilyEmpty": "사용 가능한 시스템 글꼴을 찾지 못했습니다.",
+  "settings.codeFontFamilyMissing": "설치되지 않음",
+  "settings.codeFontFamilySearch": "글꼴 검색…",
+  "settings.codeFontFamilyNoMatches": "일치하는 글꼴이 없습니다",
   "settings.fontSize": "코드 글꼴 크기",
   "settings.fontSizeDescription":
     "코드 블록, 파일 미리 보기, Diff 보기의 기본 글꼴 크기를 조정합니다.",

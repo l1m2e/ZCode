@@ -1435,7 +1435,9 @@ export function SettingsPage({
               ? "toggle_code_line_numbers"
               : key === "wrapLongLines"
                 ? "toggle_code_line_wrap"
-                : "change_code_font_size";
+                : key === "fontFamily"
+                  ? "change_code_font_family"
+                  : "change_code_font_size";
       const value = Object.values(patch)[0];
       return runUserAction({
         input: { featureId: "settings.appearance", action, trigger: "select" },

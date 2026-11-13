@@ -22,7 +22,11 @@ import {
   type CodingPlanQuotaResetAutoPlayReservationAttempt,
   type CodingPlanQuotaResetAutoPlayedSlot,
 } from "@/store/codingPlanQuotaResetState.js";
-import { DEFAULT_CODE_PREVIEW_SETTINGS } from "@/lib/codePreviewSettings.js";
+import {
+  DEFAULT_CODE_PREVIEW_SETTINGS,
+  getCodeFontFamilyCss,
+  normalizeCodeFontFamily,
+} from "@/lib/codePreviewSettings.js";
 import { readSafeLocalStorage, writeSafeLocalStorage } from "@/lib/browserEnvironment.js";
 import {
   applyUiFontSizePx,
@@ -91,6 +95,15 @@ function loadFileManagerNavigationPreferences(): Record<string, boolean> {
   }
 }
 
+function applyCodeFontFamily(settings: CodePreviewSettings): void {
+  if (typeof document === "undefined") return;
+  // font-mono 同时用于路径和快捷键；代码字体单独投影，避免设置影响界面文本。
+  document.documentElement.style.setProperty(
+    "--code-font-family",
+    getCodeFontFamilyCss(settings.fontFamily),
+  );
+}
+
 function loadCodePreviewSettings(): CodePreviewSettings {
   try {
     const raw = readSafeLocalStorage(CODE_PREVIEW_SETTINGS_KEY);
@@ -102,6 +115,7 @@ function loadCodePreviewSettings(): CodePreviewSettings {
     return {
       ...DEFAULT_CODE_PREVIEW_SETTINGS,
       ...parsed,
+      fontFamily: normalizeCodeFontFamily(parsed.fontFamily),
       fontSizePx:
         typeof parsed.fontSizePx === "number"
           ? Math.min(20, Math.max(12, Math.round(parsed.fontSizePx)))
@@ -321,12 +335,16 @@ export function createZCodeStore(
         const next = {
           ...state.codePreviewSettings,
           ...patch,
+          fontFamily: normalizeCodeFontFamily(
+            patch.fontFamily ?? state.codePreviewSettings.fontFamily,
+          ),
           fontSizePx:
             typeof patch.fontSizePx === "number"
               ? Math.min(20, Math.max(12, Math.round(patch.fontSizePx)))
               : state.codePreviewSettings.fontSizePx,
         };
         writeSafeLocalStorage(CODE_PREVIEW_SETTINGS_KEY, JSON.stringify(next));
+        applyCodeFontFamily(next);
         return { codePreviewSettings: next };
       }),
 
@@ -563,6 +581,7 @@ export function createZCodeStore(
   syncSystemThemeListener(useStore.getState().theme);
   applyTheme(useStore.getState().theme);
   applyUiFontSizePx(useStore.getState().uiFontSizePx);
+  applyCodeFontFamily(useStore.getState().codePreviewSettings);
   document.documentElement.classList.toggle(
     "dark",
     resolveTheme(useStore.getState().theme) === "dark",

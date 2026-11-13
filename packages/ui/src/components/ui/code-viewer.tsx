@@ -716,9 +716,8 @@ export function CodeViewer({
       "--diffs-bg": "var(--color-background)",
       "--diffs-light-bg": "var(--color-background)",
       "--diffs-dark-bg": "var(--color-background)",
-      // @pierre/diffs 在 Shadow DOM 内使用自己的等宽 fallback，Windows 中文会落到宋体。
-      // 显式透传应用 token，让 Markdown code block、文件预览和 inline code 使用同一 CJK fallback。
-      "--diffs-font-family": "var(--font-mono)",
+      // 代码字体独立于界面等宽 token，默认仍保留应用的语言相关 CJK fallback。
+      "--diffs-font-family": "var(--code-font-family, var(--font-mono))",
       "--diffs-font-size": `${fontSizePx}px`,
       "--code-comment-add-tooltip": toCssString(
         canUseCommentGutterUtility ? labels.addCommentTooltip : "",

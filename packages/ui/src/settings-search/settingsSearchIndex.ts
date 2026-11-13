@@ -210,6 +210,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     visibility: "all",
   },
   {
+    id: "settings.codeFontFamily",
+    section: "appearance",
+    description: "settings.codeFontFamilyDescription",
+    visibility: "all",
+  },
+  {
     id: "settings.fontSize",
     section: "appearance",
     description: "settings.fontSizeDescription",

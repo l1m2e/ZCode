@@ -3948,6 +3948,20 @@ const ruRU: Record<string, string> = {
   "settings.showLineNumbersDescription": "Показывать номера строк в представлениях кода и diff.",
   "settings.wrapLongLines": "Переносить длинные строки",
   "settings.wrapLongLinesDescription": "Автоматически переносить длинные строки кода.",
+  "settings.codeFontFamily": "Шрифт кода",
+  "settings.codeFontFamilyDescription":
+    "Выберите установленный на этом устройстве шрифт для блоков кода, предпросмотра файлов и diff.",
+  "settings.codeFontFamilyDefault": "Моноширинный по умолчанию",
+  "settings.codeFontFamilyUnsupported":
+    "Этот браузер не поддерживает получение списка системных шрифтов.",
+  "settings.codeFontFamilyDenied":
+    "Доступ к шрифтам не разрешён. Разрешите доступ и снова откройте меню.",
+  "settings.codeFontFamilyError":
+    "Не удалось загрузить системные шрифты. Откройте меню снова, чтобы повторить попытку.",
+  "settings.codeFontFamilyEmpty": "Доступные системные шрифты не найдены.",
+  "settings.codeFontFamilyMissing": "Не установлен",
+  "settings.codeFontFamilySearch": "Поиск шрифтов…",
+  "settings.codeFontFamilyNoMatches": "Подходящие шрифты не найдены",
   "settings.fontSize": "Размер шрифта кода",
   "settings.fontSizeDescription":
     "Размер шрифта по умолчанию для блоков кода, предпросмотра файлов и diff.",

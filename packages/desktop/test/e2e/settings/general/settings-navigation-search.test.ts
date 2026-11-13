@@ -7,6 +7,7 @@ import {
 } from "@zcode/shared/test-ids";
 import { clearAppData, clickTestIdByDom, readSettings } from "#e2e/helpers/desktop-app";
 import { prepareV4ConversationE2E } from "#e2e/helpers/v4-conversation";
+import { reloadElectronSessionPreservingBrowserProfile } from "#e2e/helpers/e2e-electron-reload";
 
 const input = () => $('[data-testid="settings-search-input"]');
 const page = () => $(`[data-testid="${TID_SETTINGS_PAGE}"]`);
@@ -137,6 +138,75 @@ describe("设置项模糊搜索", () => {
     expect(await input().getValue()).toBe("");
     await browser.keys("Escape");
     await $('[data-testid="settings-search-dialog"]').waitForDisplayed({ reverse: true });
+  });
+
+  it("代码字体可搜索、即时应用且重载后保留，不改界面字体", async () => {
+    await openSearch();
+    await input().setValue("代码字体");
+    await result("settings.codeFontFamily").click();
+    await expectLocated("settings.codeFontFamily");
+    const originalUi = await browser.execute(() => ({
+      font: getComputedStyle(document.body).fontFamily,
+      mono: getComputedStyle(document.documentElement).getPropertyValue("--font-mono"),
+    }));
+    await anchor("settings.codeFontFamily").$('button[role="combobox"]').click();
+    const installedFont = $('[role="option"][data-code-font-installed="true"]');
+    await installedFont.waitForDisplayed({ timeout: 15_000 });
+    const family = await installedFont.getAttribute("data-code-font-option");
+    if (!family) throw new Error("系统字体选项缺少 family");
+    const fontPopup = $("[data-code-font-popup]");
+    const fontSearch = fontPopup.$('[data-slot="command-input"]');
+    await fontSearch.waitForDisplayed();
+    expect((await fontPopup.getSize()).height).toBeLessThanOrEqual(360);
+    await fontSearch.setValue("zcode-font-no-match-493071");
+    await fontPopup.$('[data-slot="command-empty"]').waitForDisplayed();
+    await fontSearch.setValue(family.toLocaleLowerCase());
+    const filteredFont = $('[role="option"][data-code-font-installed="true"]');
+    await filteredFont.waitForDisplayed();
+    expect(await filteredFont.getAttribute("data-code-font-option")).toBe(family);
+    await filteredFont.click();
+    await browser.waitUntil(
+      () =>
+        browser.execute((family) => {
+          const hosts = document.querySelectorAll("diffs-container");
+          return (
+            hosts.length > 0 &&
+            [...hosts].every((host) => {
+              const pre = host.shadowRoot?.querySelector("pre");
+              return pre && getComputedStyle(pre).fontFamily.includes(family);
+            })
+          );
+        }, family),
+      { timeout: 10_000, timeoutMsg: "代码预览没有应用选择的字体" },
+    );
+    expect(
+      await browser.execute(() => ({
+        font: getComputedStyle(document.body).fontFamily,
+        mono: getComputedStyle(document.documentElement).getPropertyValue("--font-mono"),
+      })),
+    ).toEqual(originalUi);
+    expect(
+      await browser.execute(
+        () => JSON.parse(localStorage.getItem("zcode-code-preview-settings") ?? "{}").fontFamily,
+      ),
+    ).toBe(family);
+    await reloadElectronSessionPreservingBrowserProfile(browser);
+    await page().waitForDisplayed({ timeout: 30_000 });
+    await clickTestIdByDom(testId(TID_SETTINGS_SECTION_NAV, "appearance"));
+    await anchor("settings.codeFontFamily").waitForDisplayed();
+    expect(await anchor("settings.codeFontFamily").getText()).toContain(family);
+    expect(
+      await browser.execute(() =>
+        document.documentElement.style.getPropertyValue("--code-font-family"),
+      ),
+    ).toContain(family);
+    await anchor("settings.codeFontFamily").$('button[role="combobox"]').click();
+    await $('[role="option"][data-code-font-option="default"]').click();
+    expect(
+      await browser.execute(() =>
+        document.documentElement.style.getPropertyValue("--code-font-family"),
+      ),
+    ).toBe("var(--font-mono)");
   });
 
   it("SS04：高亮自动消失，重复命中重新计时且保留焦点和位置", async () => {

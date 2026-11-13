@@ -792,6 +792,10 @@ export type CuaOsSupport =
   | { kind: "macos-below-minimum"; minimumMacOs: string; currentMacOs: string }
   | { kind: "not-applicable" };
 
+export type SystemFontsResult =
+  | { status: "available"; families: string[] }
+  | { status: "unsupported" | "denied" | "error" };
+
 /**
  * 平台操作接口 —— 替代直接访问 window.zcode
  *
@@ -803,6 +807,9 @@ export type CuaOsSupport =
  * 业务服务（文件、终端、凭据等）走 IServiceAccessor 的 RPC 通道。
  */
 export interface IPlatformService {
+  /** 枚举当前显示设备的已安装字体；由用户操作触发，不路由到 workspace 所在宿主。 */
+  getSystemFonts?(): Promise<SystemFontsResult>;
+
   /** 是否支持当前客户端本机文件的默认应用与目录操作；Web 不具备此能力。 */
   canOpenLocalFiles?: boolean;
 

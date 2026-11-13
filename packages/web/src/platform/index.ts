@@ -7,7 +7,7 @@ import {
   type RemoteTarget,
   type WebRemoteControlStatus,
 } from "@zcode/shared";
-import { playTaskNotificationSound } from "@zcode/ui";
+import { playTaskNotificationSound, queryBrowserSystemFonts } from "@zcode/ui";
 import { resolveWebCommunityUrl, resolveWebHelpConfig } from "#src/communityUrl.js";
 import type { WebRemoteControlPlatformProxy } from "#src/platform/contract.js";
 import { saveBrowserFile } from "#src/platform/saveBrowserFile.js";
@@ -25,6 +25,7 @@ export function createWebPlatform(options?: {
   return {
     canSelectFilePath: false,
     canOpenLocalFiles: false,
+    getSystemFonts: queryBrowserSystemFonts,
     saveFile: saveBrowserFile,
     // Web 端无法打开系统目录选择框
     selectDirectory: () => Promise.resolve(null),

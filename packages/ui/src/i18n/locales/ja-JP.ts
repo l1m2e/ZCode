@@ -3972,6 +3972,19 @@ const jaJP: Record<string, string> = {
   "settings.showLineNumbersDescription": "コードと差分のビューに行番号を表示します。",
   "settings.wrapLongLines": "長い行を折り返す",
   "settings.wrapLongLinesDescription": "長いコード行を自動で折り返します。",
+  "settings.codeFontFamily": "コードフォント",
+  "settings.codeFontFamilyDescription":
+    "この端末にインストールされたフォントを選択し、コードブロック、ファイルプレビュー、差分に使用します。",
+  "settings.codeFontFamilyDefault": "既定の等幅フォント",
+  "settings.codeFontFamilyUnsupported": "このブラウザーではシステムフォントを取得できません。",
+  "settings.codeFontFamilyDenied":
+    "フォントへのアクセスが許可されていません。許可してから、このメニューを開き直してください。",
+  "settings.codeFontFamilyError":
+    "システムフォントを取得できませんでした。メニューを開き直して再試行してください。",
+  "settings.codeFontFamilyEmpty": "利用可能なシステムフォントが見つかりませんでした。",
+  "settings.codeFontFamilyMissing": "未インストール",
+  "settings.codeFontFamilySearch": "フォントを検索…",
+  "settings.codeFontFamilyNoMatches": "一致するフォントはありません",
   "settings.fontSize": "コードのフォントサイズ",
   "settings.fontSizeDescription":
     "コードブロック、ファイルプレビュー、差分ビューのデフォルトのフォントサイズを調整します。",

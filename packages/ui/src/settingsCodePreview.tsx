@@ -1,5 +1,10 @@
 import type { Theme } from "@/useTheme.js";
 import { useState } from "react";
+import { ChevronDownIcon } from "lucide-react";
+import { cn } from "@/components/lib/utils.js";
+import { Button } from "@/components/ui/button.js";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover.js";
+import { Command, CommandInput, CommandItem, CommandList } from "@/components/ui/command.js";
 import { resolveTheme } from "@/useTheme.js";
 import { Card, CardContent } from "@/components/ui/card.js";
 import { Input } from "@/components/ui/input.js";
@@ -10,6 +15,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  selectTriggerVariants,
 } from "@/components/ui/select.js";
 import {
   getThemeOptionLabel,
@@ -19,6 +25,8 @@ import {
 } from "@/settings/SettingsPageParts.js";
 import { getCodePreviewTheme } from "@/lib/codePreviewPreferences.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+import { getCodeFontFamilyCss, normalizeCodeFontFamily } from "@/lib/codePreviewSettings.js";
+import { useSystemFonts } from "@/hooks/usePlatform.js";
 import type { CodePreviewSettings } from "@/store/index.js";
 import { THEME_MODES } from "@/settings/settingsPageConfig.js";
 import { MAX_UI_FONT_SIZE_PX, MIN_UI_FONT_SIZE_PX } from "@/lib/uiFontSize.js";
@@ -95,6 +103,33 @@ export function AppearanceSectionContent({
 }) {
   const { intl } = useZCodeIntl();
   const activePreviewMode = resolveTheme(theme);
+  const systemFonts = useSystemFonts();
+  const [fontPickerOpen, setFontPickerOpen] = useState(false);
+  const [fontQuery, setFontQuery] = useState("");
+  const fontFamilies =
+    systemFonts.result?.status === "available" ? systemFonts.result.families : [];
+  const filteredFontFamilies = fontFamilies.filter(
+    (family) =>
+      family !== "default" &&
+      family.toLocaleLowerCase().includes(fontQuery.trim().toLocaleLowerCase()),
+  );
+  const selectFont = (family: string) => {
+    setCodePreviewSettings({ fontFamily: normalizeCodeFontFamily(family) });
+    setFontPickerOpen(false);
+  };
+  const selectedFont = codePreviewSettings.fontFamily;
+  const selectedFontMissing = selectedFont !== "default" && !fontFamilies.includes(selectedFont);
+  const fontStatusId = systemFonts.loading
+    ? "common.loading"
+    : systemFonts.result?.status === "unsupported"
+      ? "settings.codeFontFamilyUnsupported"
+      : systemFonts.result?.status === "denied"
+        ? "settings.codeFontFamilyDenied"
+        : systemFonts.result?.status === "error"
+          ? "settings.codeFontFamilyError"
+          : systemFonts.result?.status === "available" && fontFamilies.length === 0
+            ? "settings.codeFontFamilyEmpty"
+            : null;
 
   return (
     <>
@@ -226,6 +261,109 @@ export function AppearanceSectionContent({
                       setCodePreviewSettings({ wrapLongLines: checked })
                     }
                   />
+                }
+              />
+              <SettingsRow
+                searchId="settings.codeFontFamily"
+                label={intl.formatMessage({ id: "settings.codeFontFamily" })}
+                description={intl.formatMessage({ id: "settings.codeFontFamilyDescription" })}
+                control={
+                  <Popover
+                    open={fontPickerOpen}
+                    onOpenChange={(open) => {
+                      setFontPickerOpen(open);
+                      if (open) {
+                        setFontQuery("");
+                        void systemFonts.load();
+                      }
+                    }}
+                  >
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="lg"
+                        role="combobox"
+                        aria-expanded={fontPickerOpen}
+                        aria-label={intl.formatMessage({ id: "settings.codeFontFamily" })}
+                        className={cn(selectTriggerVariants({ size: "lg" }), "w-full min-w-0")}
+                      >
+                        <span className="min-w-0 truncate">
+                          {selectedFont === "default"
+                            ? intl.formatMessage({ id: "settings.codeFontFamilyDefault" })
+                            : selectedFont}
+                        </span>
+                        <ChevronDownIcon className="size-3.5 text-foreground-subtle" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      align="start"
+                      data-code-font-popup
+                      className="w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-1rem)] max-h-[min(360px,var(--radix-popover-content-available-height))] gap-0 p-0"
+                    >
+                      <Command shouldFilter={false} className="h-auto min-h-0">
+                        <CommandInput
+                          value={fontQuery}
+                          onValueChange={setFontQuery}
+                          placeholder={intl.formatMessage({ id: "settings.codeFontFamilySearch" })}
+                          aria-label={intl.formatMessage({ id: "settings.codeFontFamilySearch" })}
+                        />
+                        <CommandList className="min-h-0 max-h-none flex-1 overscroll-contain">
+                          <CommandItem
+                            value="default"
+                            data-code-font-option="default"
+                            data-checked={selectedFont === "default"}
+                            onSelect={() => selectFont("default")}
+                          >
+                            {intl.formatMessage({ id: "settings.codeFontFamilyDefault" })}
+                          </CommandItem>
+                          {selectedFontMissing ? (
+                            <CommandItem
+                              value={selectedFont}
+                              disabled
+                              data-code-font-option={selectedFont}
+                            >
+                              <span className="min-w-0 truncate">{selectedFont}</span>
+                              {systemFonts.result?.status === "available"
+                                ? ` (${intl.formatMessage({ id: "settings.codeFontFamilyMissing" })})`
+                                : ""}
+                            </CommandItem>
+                          ) : null}
+                          {fontStatusId ? (
+                            <div
+                              role="status"
+                              className="px-2 py-2 text-ui-base text-foreground-subtle"
+                            >
+                              {intl.formatMessage({ id: fontStatusId })}
+                            </div>
+                          ) : null}
+                          {!fontStatusId &&
+                          fontQuery.trim() &&
+                          filteredFontFamilies.length === 0 ? (
+                            <div
+                              data-slot="command-empty"
+                              role="status"
+                              className="px-2 py-4 text-center text-ui-base text-foreground-subtle"
+                            >
+                              {intl.formatMessage({ id: "settings.codeFontFamilyNoMatches" })}
+                            </div>
+                          ) : null}
+                          {filteredFontFamilies.map((family) => (
+                            <CommandItem
+                              key={family}
+                              value={family}
+                              data-code-font-option={family}
+                              data-code-font-installed="true"
+                              data-checked={family === selectedFont}
+                              style={{ fontFamily: getCodeFontFamilyCss(family) }}
+                              onSelect={() => selectFont(family)}
+                            >
+                              <span className="min-w-0 truncate">{family}</span>
+                            </CommandItem>
+                          ))}
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 }
               />
               <SettingsRow
