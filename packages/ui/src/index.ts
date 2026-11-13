@@ -92,6 +92,7 @@ export {
   setDefaultFileDisplayBasePath,
 } from "./lib/fileDisplay.js";
 export type { FileDisplayDescriptor, FileDisplayOptions } from "./lib/fileDisplay.js";
+export { queryBrowserSystemFonts } from "./lib/browserEnvironment.js";
 export { playTaskNotificationSound } from "./lib/taskNotificationSound.js";
 export {
   applyUiFontSizePx,

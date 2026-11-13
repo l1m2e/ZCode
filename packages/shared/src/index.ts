@@ -245,6 +245,7 @@ export type {
   MaterializeWorkflowArtifactFileResult,
   SaveFileRequest,
   SaveFileResult,
+  SystemFontsResult,
   PrintPageToPdfResult,
   MicrophoneAccessResetResult,
   MicrophoneAccessResult,

@@ -806,6 +806,10 @@ export type CuaOsSupport =
   | { kind: "macos-below-minimum"; minimumMacOs: string; currentMacOs: string }
   | { kind: "not-applicable" };
 
+export type SystemFontsResult =
+  | { status: "available"; families: string[] }
+  | { status: "unsupported" | "denied" | "error" };
+
 /**
  * 平台操作接口 —— 替代直接访问 window.zcode
  *
@@ -820,6 +824,9 @@ export interface IPlatformService {
   getPreinstalledToolsState?(): Promise<PreinstalledToolsState>;
   executePreinstalledToolsCommand?(command: PreinstalledToolsCommand): Promise<void>;
   onPreinstalledToolsState?(callback: (state: PreinstalledToolsState) => void): () => void;
+
+  /** 枚举当前显示设备的已安装字体；由用户操作触发，不路由到 workspace 所在宿主。 */
+  getSystemFonts?(): Promise<SystemFontsResult>;
   /** 是否支持当前客户端本机文件的默认应用与目录操作；Web 不具备此能力。 */
   canOpenLocalFiles?: boolean;
 
