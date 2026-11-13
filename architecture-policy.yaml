@@ -1835,12 +1835,14 @@ modules:
       - packages/ui/src/GitPane
       - packages/ui/src/GitPane.tsx
       - packages/ui/src/lib/gitReviewSettings.ts
+      - packages/ui/src/lib/editorViewDiffMarks.ts
     managed: true
     requires: [code-comment, shared, ui]
     publicEntrypoints:
       - packages/ui/src/GitPane/contract.ts
       - packages/ui/src/GitPane.tsx
       - packages/ui/src/lib/gitReviewSettings.ts
+      - packages/ui/src/lib/editorViewDiffMarks.ts
     layers:
       ui: .
     owner: workspace

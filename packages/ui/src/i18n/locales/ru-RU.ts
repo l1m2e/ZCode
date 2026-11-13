@@ -2059,6 +2059,7 @@ const ruRU: Record<string, string> = {
   "git.review.changeOverview": "Обзор изменений: нажмите для перехода, стрелки для прокрутки",
   "git.review.diffStyleSplit": "Сравнение в два столбца (новое слева)",
   "git.review.diffStyleUnified": "Сравнение одной колонкой",
+  "git.review.diffStyleEditor": "Режим редактора (текущее содержимое с полосами изменений)",
   "git.review.backToList": "Вернуться к списку файлов",
   "git.review.openPreview": "Открыть в предпросмотре файла",
   "git.review.emptySelectionTitle": "Выберите файл для проверки",

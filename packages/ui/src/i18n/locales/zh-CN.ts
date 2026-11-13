@@ -2193,6 +2193,7 @@ const zhCN: Record<string, string> = {
   "git.review.changeOverview": "变更概览：点击定位，方向键滚动",
   "git.review.diffStyleSplit": "双栏对比（新版在左）",
   "git.review.diffStyleUnified": "单栏对比",
+  "git.review.diffStyleEditor": "编辑器视图（当前内容 + 变更色条）",
   "git.review.backToList": "返回文件列表",
   "git.review.openPreview": "在文件预览中打开",
   "git.review.emptySelectionTitle": "选择一个文件查看变更",

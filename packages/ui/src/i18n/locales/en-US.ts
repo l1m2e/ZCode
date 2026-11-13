@@ -2363,6 +2363,7 @@ const enUS: Record<string, string> = {
   "git.review.changeOverview": "Change overview: click to jump, arrow keys to scroll",
   "git.review.diffStyleSplit": "Split diff (new on left)",
   "git.review.diffStyleUnified": "Inline diff",
+  "git.review.diffStyleEditor": "Editor view (current content with change bars)",
   "git.review.backToList": "Back to file list",
   "git.review.openPreview": "Open in file preview",
   "git.review.emptySelectionTitle": "Select a file to review",

@@ -2083,6 +2083,7 @@ const jaJP: Record<string, string> = {
   "git.review.changeOverview": "変更の概要：クリックで移動、矢印キーでスクロール",
   "git.review.diffStyleSplit": "分割比較（新版を左に）",
   "git.review.diffStyleUnified": "インライン比較",
+  "git.review.diffStyleEditor": "エディター表示（最新内容 + 変更バー）",
   "git.review.backToList": "ファイルリストに戻る",
   "git.review.openPreview": "ファイルプレビューで開く",
   "git.review.emptySelectionTitle": "確認するファイルを選択",

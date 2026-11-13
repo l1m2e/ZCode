@@ -19,6 +19,7 @@ import {
   Ellipsis,
   EyeIcon,
   FileCode2Icon,
+  FilePenLineIcon,
 } from "lucide-react";
 import { DiffPreviewContent } from "@/GitPane/contract.js";
 import { nanoid } from "nanoid";
@@ -1608,18 +1609,32 @@ export function PreviewPane({
             data-preview-diff-style-toggle
             aria-label={intl.formatMessage({
               id:
-                diffStyle === "split" ? "git.review.diffStyleUnified" : "git.review.diffStyleSplit",
+                diffStyle === "split"
+                  ? "git.review.diffStyleUnified"
+                  : diffStyle === "unified"
+                    ? "git.review.diffStyleEditor"
+                    : "git.review.diffStyleSplit",
             })}
             title={intl.formatMessage({
               id:
-                diffStyle === "split" ? "git.review.diffStyleUnified" : "git.review.diffStyleSplit",
+                diffStyle === "split"
+                  ? "git.review.diffStyleUnified"
+                  : diffStyle === "unified"
+                    ? "git.review.diffStyleEditor"
+                    : "git.review.diffStyleSplit",
             })}
             onClick={() =>
-              setGitReviewSettings({ diffStyle: diffStyle === "split" ? "unified" : "split" })
+              setGitReviewSettings({
+                // 与 GitPane 相同的三态循环：split → unified → editor → split。
+                diffStyle:
+                  diffStyle === "split" ? "unified" : diffStyle === "unified" ? "editor" : "split",
+              })
             }
           >
             {diffStyle === "split" ? (
               <Columns2Icon className="size-4" />
+            ) : diffStyle === "editor" ? (
+              <FilePenLineIcon className="size-4" />
             ) : (
               <RectangleHorizontalIcon className="size-4" />
             )}
