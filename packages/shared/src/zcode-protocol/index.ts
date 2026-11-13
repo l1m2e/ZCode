@@ -5,6 +5,15 @@ import { appControlProtocol, appControlCancelMethod } from "../app-control/contr
 // Bot 反向回复的名字解析/待澄清结果与 App、CLI 使用同一严格 schema。
 export { channelReplyRequestSchema, channelReplyResultSchema } from "../channel-mention.js";
 export { zcodeProtocolTraceSchema, type ZCodeProtocolTrace } from "./trace.js";
+// 历史全文复用 V4 fileChanges 的严格契约；不新增旧协议 method 或复制 schema。
+export {
+  v4ConversationFileChangeContentSchema,
+  v4ConversationFileChangesParamsSchema,
+  v4ConversationFileChangesResultSchema,
+  type V4ConversationFileChangeContent,
+  type V4ConversationFileChangesParams,
+  type V4ConversationFileChangesResult,
+} from "../zcode-protocol-v4/transport.js";
 // 扩展进程 P2 的插件只读查询（plugins/readUserOptions、plugins/mentionItems）。
 export * from "./plugin-host-queries/contract.js";
 import {

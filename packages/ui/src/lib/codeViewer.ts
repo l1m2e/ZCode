@@ -1,5 +1,6 @@
 /* eslint-disable max-lines -- codeViewer 集中维护文件、文本、图片和 diff 预览提取；本次只收敛 tool identity，不顺手拆文件以免扩大回归面。 */
 import type { BundledLanguage } from "shiki";
+import type { ConversationRowTarget } from "@zcode/shared/zcode-protocol-v4";
 import { getMediaPreviewFormat, type MediaPreviewKind } from "@zcode/shared";
 import type { TaskChatToolCall as ChatToolCall } from "@/lib/taskChatMessageTypes.js";
 import type { CodeViewerWorkspaceScope } from "@/lib/codeViewerWorkspaceScope.js";
@@ -53,11 +54,20 @@ export interface TextCodeViewerSource extends CodeViewerWorkspaceScope {
   language: BundledLanguage;
 }
 
+export interface HistoricalDiffConversationReference {
+  sessionId: string;
+  target: ConversationRowTarget;
+  /** artifact 的原始路径；显示路径解码或绝对化不能改变历史查询身份。 */
+  contentPath?: string;
+}
+
 export interface PatchCodeViewerSource extends CodeViewerWorkspaceScope {
   type: "patch";
   title: string;
   path?: string;
   patch: string;
+  /** 只持久化历史定位信息；完整前后版本由预览打开后按需读取。 */
+  conversation?: HistoricalDiffConversationReference;
 }
 
 export interface MultiFileDiffCodeViewerSource extends CodeViewerWorkspaceScope {
@@ -444,8 +454,8 @@ export function createDiffSourceFilePreviewSource(
     return null;
   }
 
-  // diff tab 只保存 diff source；打开“原文件预览”时必须保留 workspace scope，
-  // 否则远程 workspace 或手机远控会按本地路径边界去读文件。
+  // diff tab 只保存 diff source；当前文件预览明确剥离 conversation 历史引用，
+  // 同时保留 workspace scope，避免远程 workspace 或手机远控误读本地文件。
   return {
     type: "file",
     title: getPathLeaf(path),

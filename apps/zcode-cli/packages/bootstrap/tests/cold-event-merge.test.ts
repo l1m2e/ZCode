@@ -7,9 +7,14 @@ import {
   type SessionId,
   type TraceId,
   type TurnId,
+  type WorkspaceCheckpointArtifact,
 } from "@zcode/contracts";
+import { structuredPatch } from "diff";
 import { ProductProjection } from "../src/zcode-protocol-v4/product-projection.js";
-import { buildColdFileChangeSummaries } from "../src/zcode-protocol-v4/cold-file-change-summaries.js";
+import {
+  buildColdFileChangeSummaries,
+  readConversationFileChangesFromEvents,
+} from "../src/zcode-protocol-v4/cold-file-change-summaries.js";
 import * as coldEventMerge from "../src/zcode-protocol-v4/cold-event-merge.js";
 import { synthesizeEventsFromMessages } from "../src/zcode-protocol-v4/transcript-hydration.js";
 
@@ -88,6 +93,74 @@ function event(
     traceId: "trace-live" as TraceId,
     sequenceNumber,
     payload,
+  };
+}
+
+type HistoricalFile = WorkspaceCheckpointArtifact["files"][number];
+
+function historicalFile(
+  beforeContent: string | null,
+  afterContent: string,
+  overrides: Partial<HistoricalFile> = {},
+): HistoricalFile {
+  const path = "/work/history.txt";
+  return {
+    path,
+    existedBefore: beforeContent !== null,
+    beforeContent,
+    afterContent,
+    structuredPatch: structuredPatch(path, path, beforeContent ?? "", afterContent).hunks,
+    ...overrides,
+  };
+}
+
+function historicalFixture(
+  entries: Array<{
+    files?: HistoricalFile[];
+    toolCallId?: string;
+    messageId?: string;
+    turnId?: string;
+    rawArtifact?: string;
+  }>,
+) {
+  const artifacts = new Map<string, string>();
+  const events = entries.map((entry, index) => {
+    const snapshotRef = `artifact://history-${index}`;
+    if (entry.files) {
+      artifacts.set(
+        snapshotRef,
+        JSON.stringify({
+          version: 1,
+          kind: "workspace_file_before_change",
+          createdAt: "2026-11-13T00:00:00.000Z",
+          toolCallId: entry.toolCallId ?? `tool-${index}`,
+          toolName: "Edit",
+          files: entry.files,
+        }),
+      );
+    }
+    if (entry.rawArtifact !== undefined) artifacts.set(snapshotRef, entry.rawArtifact);
+    return event(
+      index + 1,
+      SessionEventType.CheckpointCreated,
+      {
+        checkpointId: `checkpoint-${index}`,
+        messageId: entry.messageId ?? "user-history",
+        scope: "workspace",
+        snapshotRef,
+      },
+      entry.turnId ?? "runtime-history",
+    );
+  });
+  return {
+    events,
+    messageIds: ["user-history"],
+    targetTurnId: "runtime-history" as TurnId,
+    readArtifact: vi.fn(async (ref: string) => {
+      const artifact = artifacts.get(ref);
+      if (artifact === undefined) throw new Error("missing historical artifact");
+      return artifact;
+    }),
   };
 }
 
@@ -425,6 +498,334 @@ describe("cold conversation three-source merge", () => {
     expect(header).toMatchObject({
       fileChanges: { additions: 3, deletions: 1, files: 2, state: "active" },
     });
+  });
+
+  it("returns only the requested historical pair and keeps default/cold summaries lightweight", async () => {
+    const before = "unchanged context\nold\nlast line\n";
+    const middle = "unchanged context\nintermediate\nlast line\n";
+    const after = "unchanged context\nfinal\nlast line\n";
+    const fixture = historicalFixture([
+      {
+        files: [
+          historicalFile(before, middle),
+          historicalFile("other\n", "other changed\n", { path: "/work/other.txt" }),
+        ],
+      },
+      { files: [historicalFile(middle, after, { afterContent: undefined })] },
+      {
+        files: [historicalFile(after, "later turn\n")],
+        messageId: "user-later",
+        turnId: "runtime-later",
+      },
+    ]);
+    const light = await readConversationFileChangesFromEvents(fixture);
+    expect(light.items.every((item) => !("content" in item))).toBe(true);
+    const full = await readConversationFileChangesFromEvents({
+      ...fixture,
+      contentPath: "/work/history.txt",
+    });
+    expect(full.items.find((item) => item.path === "/work/history.txt")).toMatchObject({
+      writeCount: 2,
+      content: { status: "available", beforeContent: before, afterContent: after },
+    });
+    expect(full.items.find((item) => item.path === "/work/other.txt")).not.toHaveProperty(
+      "content",
+    );
+    const summaries = await buildColdFileChangeSummaries(fixture);
+    expect(summaries.get("user-history")?.items.every((item) => !("content" in item))).toBe(true);
+  });
+
+  it("filters legacy checkpoint artifacts by toolCallId and never borrows the turn fallback", async () => {
+    const fixture = historicalFixture([
+      { files: [historicalFile("first\n", "second\n")], toolCallId: "tool-a" },
+      {
+        files: [historicalFile("second\n", "third\n", { afterContent: undefined })],
+        toolCallId: "tool-b",
+      },
+    ]);
+    fixture.events.push(
+      event(
+        3,
+        SessionEventType.ModelComplete,
+        {
+          fileChanges: { items: [{ path: "/work/other-tool.txt", additions: 9 }] },
+        },
+        "runtime-history",
+      ),
+    );
+    const selected = await readConversationFileChangesFromEvents({
+      ...fixture,
+      toolCallId: "tool-b",
+      contentPath: "/work/history.txt",
+    });
+    expect(selected.items).toHaveLength(1);
+    expect(selected.items[0]).toMatchObject({
+      writeCount: 1,
+      content: { status: "available", beforeContent: "second\n", afterContent: "third\n" },
+    });
+    const unknown = await readConversationFileChangesFromEvents({
+      ...fixture,
+      toolCallId: "unknown-tool",
+      contentPath: "/work/history.txt",
+    });
+    expect(unknown.files).toBe(0);
+    expect(unknown.items).toEqual([
+      {
+        path: "/work/history.txt",
+        additions: 0,
+        deletions: 0,
+        writeCount: 0,
+        toolNames: [],
+        patches: [],
+        content: { status: "unavailable" },
+      },
+    ]);
+  });
+
+  it("keeps message/product-turn checkpoint boundaries including split turns", async () => {
+    const fixture = historicalFixture([
+      { files: [historicalFile("a\n", "b\n")], messageId: "queued-user" },
+      { files: [historicalFile("b\n", "c\n")], messageId: "other-user" },
+    ]);
+    const selected = await readConversationFileChangesFromEvents({
+      ...fixture,
+      messageIds: ["queued-user"],
+      targetTurnId: "runtime-history~q1" as TurnId,
+      contentPath: "/work/history.txt",
+    });
+    expect(selected.items[0]?.content).toEqual({
+      status: "available",
+      beforeContent: "a\n",
+      afterContent: "b\n",
+    });
+    const missing = await readConversationFileChangesFromEvents({
+      ...fixture,
+      messageIds: [],
+      targetTurnId: "runtime-history~q1" as TurnId,
+      contentPath: "/work/history.txt",
+    });
+    expect(missing.items[0]?.content).toEqual({ status: "unavailable" });
+  });
+
+  it("allows historical external paths and treats absent-before as empty only for created files", async () => {
+    const fixture = historicalFixture([
+      {
+        files: [
+          historicalFile(null, "created\n", {
+            path: "/authorized-external/history.txt",
+            afterContent: undefined,
+          }),
+        ],
+      },
+      { files: [historicalFile(null, "unknown old file\n", { existedBefore: true })] },
+    ]);
+    const created = await readConversationFileChangesFromEvents({
+      ...fixture,
+      contentPath: "/authorized-external/history.txt",
+    });
+    expect(
+      created.items.find((item) => item.path === "/authorized-external/history.txt")?.content,
+    ).toEqual({ status: "available", beforeContent: "", afterContent: "created\n" });
+    const unknown = await readConversationFileChangesFromEvents({
+      ...fixture,
+      contentPath: "/work/history.txt",
+    });
+    expect(unknown.items.find((item) => item.path === "/work/history.txt")?.content).toEqual({
+      status: "unavailable",
+    });
+  });
+
+  it.each(["missing", "invalid JSON", "old artifact without tool identity"])(
+    "reports %s as unavailable without replacing earlier history or leaking another tool",
+    async (failure) => {
+      const fixture = historicalFixture([
+        { files: [historicalFile("a\n", "b\n")] },
+        failure === "missing"
+          ? {}
+          : {
+              rawArtifact:
+                failure === "invalid JSON" ? "{" : JSON.stringify({ version: 1, files: [] }),
+            },
+      ]);
+      const result = await readConversationFileChangesFromEvents({
+        ...fixture,
+        contentPath: "/work/history.txt",
+      });
+      expect(result.items[0]?.content).toEqual({ status: "unavailable" });
+      expect(result.items[0]?.patches.length).toBeGreaterThan(0);
+      const allMissing = historicalFixture([{}]);
+      const unavailable = await readConversationFileChangesFromEvents({
+        ...allMissing,
+        contentPath: "/work/history.txt",
+      });
+      expect(unavailable.items[0]?.content).toEqual({ status: "unavailable" });
+    },
+  );
+
+  it("keeps legacy model summary metadata but cannot invent its full versions", async () => {
+    const fixture = historicalFixture([]);
+    fixture.events.push(
+      event(
+        1,
+        SessionEventType.ModelComplete,
+        {
+          fileChanges: {
+            items: [{ path: "/work/history.txt", additions: 2, deletions: 1, writeCount: 3 }],
+          },
+        },
+        "runtime-history",
+      ),
+    );
+    const result = await readConversationFileChangesFromEvents({
+      ...fixture,
+      contentPath: "/work/history.txt",
+    });
+    expect(result.items[0]).toMatchObject({
+      additions: 2,
+      deletions: 1,
+      writeCount: 3,
+      content: { status: "unavailable" },
+    });
+  });
+
+  it("does not reuse an earlier after when the final exact patch cannot apply", async () => {
+    const failed = historicalFile("mismatched source\n", "not final\n", {
+      afterContent: undefined,
+      structuredPatch: historicalFile("expected source\n", "expected final\n").structuredPatch,
+    });
+    const fixture = historicalFixture([
+      { files: [historicalFile("first\n", "earlier after\n")] },
+      { files: [failed] },
+    ]);
+    const result = await readConversationFileChangesFromEvents({
+      ...fixture,
+      contentPath: "/work/history.txt",
+    });
+    expect(result.items[0]).toMatchObject({ writeCount: 2, content: { status: "unavailable" } });
+    expect(result.items[0]?.patches).toContainEqual(failed.structuredPatch[0]);
+  });
+
+  it("preserves line endings and rejects patch length mismatches", async () => {
+    const valid = historicalFixture([
+      { files: [historicalFile("old\r\n", "new\r\n", { afterContent: undefined })] },
+    ]);
+    const exact = await readConversationFileChangesFromEvents({
+      ...valid,
+      contentPath: "/work/history.txt",
+    });
+    expect(exact.items[0]?.content).toEqual({
+      status: "available",
+      beforeContent: "old\r\n",
+      afterContent: "new\r\n",
+    });
+    const mismatch = historicalFixture([
+      {
+        files: [
+          historicalFile("old\n", "new\n", { afterContent: undefined, afterContentLength: 100 }),
+        ],
+      },
+    ]);
+    const unavailable = await readConversationFileChangesFromEvents({
+      ...mismatch,
+      contentPath: "/work/history.txt",
+    });
+    expect(unavailable.items[0]?.content).toEqual({ status: "unavailable" });
+  });
+
+  it.each([
+    { before: "prefix\nold\n", oldStart: 1, newStart: 1, oldLines: 1, newLines: 1 },
+    { before: "old\n", oldStart: 99, newStart: 99, oldLines: 1, newLines: 1 },
+    { before: "old\n", oldStart: 1, newStart: 1, oldLines: 2, newLines: 1 },
+  ])("rejects shifted/out-of-range or malformed hunk coordinates: %j", async (input) => {
+    const fixture = historicalFixture([
+      {
+        files: [
+          historicalFile(input.before, "new\n", {
+            afterContent: undefined,
+            structuredPatch: [
+              {
+                oldStart: input.oldStart,
+                newStart: input.newStart,
+                oldLines: input.oldLines,
+                newLines: input.newLines,
+                lines: ["-old", "+new"],
+              },
+            ],
+          }),
+        ],
+      },
+    ]);
+    const result = await readConversationFileChangesFromEvents({
+      ...fixture,
+      contentPath: "/work/history.txt",
+    });
+    expect(result.items[0]?.content).toEqual({ status: "unavailable" });
+  });
+
+  it.each([null, "old before\n"])(
+    "does not invent an after from absent patch/content: %j",
+    async (before) => {
+      const fixture = historicalFixture([
+        {
+          files: [
+            historicalFile(before, "unknown\n", {
+              afterContent: undefined,
+              structuredPatch: [],
+            }),
+          ],
+        },
+      ]);
+      const result = await readConversationFileChangesFromEvents({
+        ...fixture,
+        contentPath: "/work/history.txt",
+      });
+      expect(result.items[0]?.content).toEqual({ status: "unavailable" });
+    },
+  );
+
+  it.each([
+    { before: "", after: "first\n" },
+    { before: "last\n", after: "" },
+    { before: "old", after: "new" },
+    { before: "one\ntwo\n", after: "one\ntwo\nthree\n" },
+  ])("reconstructs exact legacy patch boundaries: %j", async ({ before, after }) => {
+    const fixture = historicalFixture([
+      { files: [historicalFile(before, after, { afterContent: undefined })] },
+    ]);
+    const result = await readConversationFileChangesFromEvents({
+      ...fixture,
+      contentPath: "/work/history.txt",
+    });
+    expect(result.items[0]?.content).toEqual({
+      status: "available",
+      beforeContent: before,
+      afterContent: after,
+    });
+  });
+
+  it("matches relative historical record paths without reading or resolving the current disk", async () => {
+    const fixture = historicalFixture([
+      { files: [historicalFile("old\n", "new\n", { path: "src/history.txt" })] },
+    ]);
+    const selected = await readConversationFileChangesFromEvents({
+      ...fixture,
+      contentPath: "src/history.txt",
+    });
+    expect(selected.items[0]?.content).toEqual({
+      status: "available",
+      beforeContent: "old\n",
+      afterContent: "new\n",
+    });
+    const other = await readConversationFileChangesFromEvents({
+      ...fixture,
+      contentPath: "/different-workspace/src/history.txt",
+    });
+    expect(
+      other.items.find((item) => item.path === "/different-workspace/src/history.txt")?.content,
+    ).toEqual({ status: "unavailable" });
+    expect(other.items.find((item) => item.path === "src/history.txt")).not.toHaveProperty(
+      "content",
+    );
   });
 
   it("omits target authority when no persisted store read was performed", async () => {

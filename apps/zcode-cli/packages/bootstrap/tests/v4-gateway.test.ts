@@ -38,6 +38,8 @@ import {
   DELIVERY_PROFILES,
   PROTOCOL_V4_LIMITS,
   utf8JsonByteLength,
+  v4ConversationFileChangesParamsSchema,
+  v4ConversationFileChangesResultSchema,
 } from "@zcode/shared/zcode-protocol-v4";
 import {
   ConversationTopicPublisher,
@@ -120,7 +122,13 @@ interface HostStub {
   /** R-19 config 种子打桩：sessionId → runtime 真值（缺省 = 钩子返回 null）。 */
   configSeeds: Map<string, SessionConfigSeed>;
   memorySettings?: Map<string, boolean>;
-  fileChangeCalls: Array<{ sessionId: string; targetRowId: number; messageIds: string[] }>;
+  fileChangeCalls: Array<{
+    sessionId: string;
+    targetRowId: number;
+    messageIds: string[];
+    contentPath?: string;
+    toolCallId?: string;
+  }>;
   fileChangesResult: V4ConversationFileChangesResult;
   fileRewindPreviewCalls: Array<{ sessionId: string; targetRowId: number; messageIds: string[] }>;
   fileRewindPreviewResult: V4ConversationFileRewindPreviewResult;
@@ -223,8 +231,8 @@ function makeGateway(host: HostStub): ConversationV4Gateway {
         },
       getSessionConfigSeed: (sessionId) => host.configSeeds.get(sessionId) ?? null,
       getSessionMemoryEnabled: (sessionId) => host.memorySettings?.get(sessionId),
-      getConversationFileChanges: async (sessionId, targetRowId, messageIds) => {
-        host.fileChangeCalls.push({ sessionId, targetRowId, messageIds });
+      getConversationFileChanges: async (sessionId, targetRowId, messageIds, _turnId, options) => {
+        host.fileChangeCalls.push({ sessionId, targetRowId, messageIds, ...options });
         return host.fileChangesResult;
       },
       previewConversationFileRewind: async (sessionId, targetRowId, messageIds) => {
@@ -3075,6 +3083,157 @@ describe("文件摘要 query", () => {
     expect(host.fileChangeCalls).toEqual([
       { sessionId: "session-1", targetRowId, messageIds: ["msg-a1"] },
     ]);
+  });
+
+  it("fileChanges alone accepts authoritative tool rows and preserves all target/rewind guards", async () => {
+    const host = makeHost();
+    const gateway = makeGateway(host);
+    const log = new EventLog();
+    gateway.ingest("session-1", sessionCreated(log));
+    gateway.ingest(
+      "session-1",
+      log.push(
+        SessionEventType.TurnStarted,
+        {
+          turnNumber: 1,
+          input: "edit historical file",
+          messageId: "user-history",
+        },
+        { turnId: "turn-history" },
+      ),
+    );
+    for (const toolCallId of ["tool-first", "tool-selected"]) {
+      gateway.ingest(
+        "session-1",
+        log.push(
+          SessionEventType.ToolCallScheduled,
+          {
+            toolCallId,
+            toolName: "Edit",
+            input: { file_path: "/authorized-external/history.txt" },
+            schedule: { parallelGroups: [[toolCallId]], executionOrder: [toolCallId] },
+          },
+          { turnId: "turn-history" },
+        ),
+      );
+    }
+    const payload = (await gateway.subscribe(subscribeParams())).initialFrame?.payload;
+    if (payload?.kind !== "snapshot") throw new Error("missing snapshot");
+    const snapshot = payload.snapshot;
+    const row = snapshot.rows.window.find(
+      (item) => item.kind === "toolCall" && item.toolCallId === "tool-selected",
+    );
+    if (!row?.entityId) throw new Error("missing authoritative tool row");
+    const params = {
+      sessionId: "session-1",
+      target: { rowId: row.rowId, entityId: row.entityId },
+      baseRevision: snapshot.revision,
+      baseLogEpoch: snapshot.logEpoch,
+    };
+    await gateway.fileChanges({ ...params, contentPath: "/authorized-external/history.txt" });
+    expect(host.fileChangeCalls).toHaveLength(1);
+    expect(host.fileChangeCalls[0]).toMatchObject({
+      targetRowId: row.rowId,
+      toolCallId: "tool-selected",
+      contentPath: "/authorized-external/history.txt",
+    });
+    await expect(
+      gateway.fileChanges({ ...params, baseRevision: snapshot.revision + 1 }),
+    ).rejects.toThrow("proto.staleRevision");
+    await expect(gateway.fileChanges({ ...params, baseLogEpoch: "old-epoch" })).rejects.toThrow(
+      "proto.staleLogEpoch",
+    );
+    await expect(
+      gateway.fileChanges({ ...params, target: { ...params.target, entityId: "forged-tool" } }),
+    ).rejects.toThrow("proto.staleTarget");
+    await expect(gateway.fileChanges({ ...params, toolCallId: "tool-first" })).rejects.toThrow();
+    await expect(
+      gateway.fileChanges({ ...params, snapshotRef: "artifact://forged" }),
+    ).rejects.toThrow();
+    await expect(gateway.fileRewindPreview(params)).rejects.toThrow("guard.actionUnavailable");
+    expect(
+      gateway.resolveRowActionTarget("session-1", params.target, "applyFileRewind"),
+    ).toMatchObject({ ok: false, reasonCode: "guard.actionUnavailable" });
+    expect(host.fileChangeCalls).toHaveLength(1);
+    expect(host.fileRewindPreviewCalls).toHaveLength(0);
+    const user = snapshot.rows.window.find((item) => item.kind === "userInput");
+    expect(user).toBeDefined();
+    await expect(
+      gateway.fileChanges({ ...params, target: { rowId: user!.rowId, entityId: user!.entityId } }),
+    ).rejects.toThrow("guard.actionUnavailable");
+    const turn = snapshot.rows.window.find((item) => item.kind === "turnHeader")!;
+    await gateway.fileChanges({
+      ...params,
+      target: { rowId: turn.rowId, entityId: turn.entityId },
+      contentPath: "/work/history.txt",
+    });
+    expect(host.fileChangeCalls[1]).toMatchObject({ contentPath: "/work/history.txt" });
+    expect(host.fileChangeCalls[1]).not.toHaveProperty("toolCallId");
+    gateway.dispose();
+  });
+
+  it("fileChanges rejects unknown cold sessions before reading artifacts", async () => {
+    const host = makeHost();
+    const gateway = makeGateway(host);
+    await expect(
+      gateway.fileChanges({
+        sessionId: "unauthorized-session",
+        target: { rowId: 1, entityId: "forged" },
+        baseRevision: 0,
+        baseLogEpoch: "epoch-1",
+        contentPath: "/outside/private.txt",
+      }),
+    ).rejects.toThrow();
+    expect(host.fileChangeCalls).toHaveLength(0);
+    gateway.dispose();
+  });
+
+  it("fileChanges runtime schemas enforce complete pairs and reject arbitrary query authority", () => {
+    const params = {
+      sessionId: "session-1",
+      target: { rowId: 1, entityId: "turn-1" },
+      baseRevision: 0,
+      baseLogEpoch: "epoch-1",
+      contentPath: "/outside/history.txt",
+    };
+    expect(v4ConversationFileChangesParamsSchema.safeParse(params).success).toBe(true);
+    expect(
+      v4ConversationFileChangesParamsSchema.safeParse({ ...params, contentPath: "" }).success,
+    ).toBe(false);
+    expect(
+      v4ConversationFileChangesParamsSchema.safeParse({ ...params, toolCallId: "forged" }).success,
+    ).toBe(false);
+    const result = (content?: unknown) => ({
+      files: 1,
+      additions: 1,
+      deletions: 0,
+      items: [
+        {
+          path: "/outside/history.txt",
+          additions: 1,
+          deletions: 0,
+          writeCount: 1,
+          toolNames: ["Edit"],
+          patches: [],
+          ...(content === undefined ? {} : { content }),
+        },
+      ],
+    });
+    for (const content of [
+      undefined,
+      { status: "available", beforeContent: "", afterContent: "new\n" },
+      { status: "unavailable" },
+    ]) {
+      expect(v4ConversationFileChangesResultSchema.safeParse(result(content)).success).toBe(true);
+    }
+    for (const content of [
+      { status: "available", beforeContent: "old\n" },
+      { status: "available", beforeContent: null, afterContent: "new\n" },
+      { status: "unavailable", afterContent: "invented" },
+      { status: "available", beforeContent: "", afterContent: "", snapshotRef: "forged" },
+    ]) {
+      expect(v4ConversationFileChangesResultSchema.safeParse(result(content)).success).toBe(false);
+    }
   });
 
   it("fileRewindPreview query 通过 turn rowId 解析同轮 messageIds 后转发宿主", async () => {

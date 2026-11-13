@@ -2554,6 +2554,16 @@ const enUS: Record<string, string> = {
   "fileManager.hideNavigation": "Hide file navigation",
   "fileManager.empty": "Select a file from the navigation",
   "codeViewer.title": "Code viewer",
+  "codeViewer.history.waiting":
+    "Waiting for the source workspace connection to load full historical content.",
+  "codeViewer.history.loading": "Loading the complete files before and after this change.",
+  "codeViewer.history.missing-reference":
+    "This preview has no historical source reference. Only the saved partial diff is shown.",
+  "codeViewer.history.unavailable":
+    "Full historical content is unavailable for this record. Only the saved partial diff is shown.",
+  "codeViewer.history.error":
+    "Failed to load full historical content. Only the saved partial diff is shown.",
+  "codeViewer.history.retry": "Retry loading",
   "git.review.selectAvailableLines":
     "The selection includes unavailable or omitted lines. Select a continuous range of visible code lines.",
   "codeViewer.close": "Close code viewer",

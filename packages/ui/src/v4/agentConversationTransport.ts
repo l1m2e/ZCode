@@ -511,6 +511,7 @@ export function createAgentConversationTransport(
         target: params.target,
         baseRevision: params.baseRevision,
         baseLogEpoch: params.baseLogEpoch,
+        ...(params.contentPath !== undefined ? { contentPath: params.contentPath } : {}),
       });
     },
     async fileRewindPreview(

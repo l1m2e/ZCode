@@ -1,4 +1,5 @@
 import { buildEditCodeViewerSource } from "@/ToolCallBlocks/renderers/edit.js";
+import { withHistoricalDiffSource } from "@/lib/codeViewerSource.js";
 import { CollapsedChangeSummary } from "@/ToolCallBlocks/renderers.js";
 import { SummaryGroupBoundaryContext } from "@/v4/conversationRowContext.js";
 import { ConsecutiveSummaryGroup } from "@/ToolCallBlocks/ToolSummaryRow.js";
@@ -364,7 +365,20 @@ function ConversationAssistantWorkContent({
                   basePath={context.workspacePath}
                   onOpenFile={
                     context.onOpenCodeViewer
-                      ? (file) => context.onOpenCodeViewer?.(buildEditCodeViewerSource(file))
+                      ? (file) => {
+                          const source = buildEditCodeViewerSource(file);
+                          const sourceRow = changes.sourceRows.get(file.path);
+                          context.onOpenCodeViewer?.(
+                            sourceRow
+                              ? withHistoricalDiffSource(
+                                  source,
+                                  context,
+                                  sourceRow.row,
+                                  sourceRow.contentPath,
+                                )
+                              : source,
+                          );
+                        }
                       : undefined
                   }
                 />
@@ -1387,8 +1401,7 @@ function ConversationTurnGroupImpl({
   // 判据用 latestAssistantTextRow.state 而不是 unit.isRunning：回合可能还在跑
   // （模型说完一段正在调工具），但最新文本行已经终态，那时 copyText 仍须可用。
   const assistantTextTerminal =
-    latestAssistantTextRow?.state === "complete" ||
-    latestAssistantTextRow?.state === "interrupted";
+    latestAssistantTextRow?.state === "complete" || latestAssistantTextRow?.state === "interrupted";
   const assistantRawCopyText = useMemo(
     () => (assistantTextTerminal ? resolveAssistantCopyText(unit) : undefined),
     [

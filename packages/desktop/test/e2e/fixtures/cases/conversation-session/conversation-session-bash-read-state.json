@@ -10,7 +10,7 @@
     {
       "path": "bash-read-state-e2e/target.txt",
       "source": "created-by-spec",
-      "description": "spec 在默认工作区写入的目标文件；Bash cat 读取它，Edit 修改它，formatter Bash 再改写它。"
+      "description": "spec 写入带远离 hunk 的稳定首尾标记的 24 行文件；真实 Bash cat → Edit alpha/gamma → formatter delta 后，文件 chip 仍展示完整历史，并支持新旧版评论加入未发送草稿。"
     },
     {
       "path": "bash-read-state-e2e/overwrite-target.mjs",

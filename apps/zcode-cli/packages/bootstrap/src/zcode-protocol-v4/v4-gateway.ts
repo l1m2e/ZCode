@@ -417,6 +417,7 @@ export interface V4GatewayHost {
     targetRowId: number,
     messageIds: string[],
     targetTurnId: TurnId | null,
+    options?: { contentPath?: string; toolCallId?: string },
   ): Promise<V4ConversationFileChangesResult>;
   previewConversationFileRewind?(
     sessionId: string,
@@ -2191,6 +2192,10 @@ export class ConversationV4Gateway {
       params.target.rowId,
       messageIds,
       targetTurnId,
+      {
+        ...(params.contentPath !== undefined ? { contentPath: params.contentPath } : {}),
+        ...(resolution.row.kind === "toolCall" ? { toolCallId: resolution.row.toolCallId } : {}),
+      },
     );
   }
 

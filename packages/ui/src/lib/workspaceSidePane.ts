@@ -1072,7 +1072,17 @@ function getCodeViewerTabSourceKey(source: CodeViewerSource): string | null {
     // file diff 之前只按 path 复用 tab，导致同一个文件在不同轮次产生的不同 patch
     // 会互相覆盖，看起来像“diff 面板只能打开一个 tab”。这里把 patch 内容摘要纳入 key，
     // 让不同 diff 可以并排保留，同时同一份 diff 重复点击仍然复用已有 tab。
-    return `${scopedKeyPrefix}patch:${source.path ?? source.title}:${hashCodeViewerContent(source.patch)}`;
+    // 相同 patch 可能属于不同历史编辑；引用与 endpoint 必须参与身份，防止复用错版本。
+    const historyKey = source.conversation
+      ? JSON.stringify([
+          source.workspaceRemoteSessionId ?? null,
+          source.conversation.sessionId,
+          source.conversation.target.rowId,
+          source.conversation.target.entityId,
+          source.conversation.contentPath ?? source.path,
+        ])
+      : "";
+    return `${scopedKeyPrefix}patch:${source.path ?? source.title}:${hashCodeViewerContent(source.patch)}:${historyKey}`;
   }
 
   if (source.type === "multi-file-diff") {

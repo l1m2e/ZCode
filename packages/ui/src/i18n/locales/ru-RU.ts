@@ -2252,6 +2252,16 @@ const ruRU: Record<string, string> = {
   "fileManager.hideNavigation": "Скрыть навигацию по файлам",
   "fileManager.empty": "Выберите файл в навигации",
   "codeViewer.title": "Просмотр кода",
+  "codeViewer.history.waiting":
+    "Ожидание подключения исходного рабочего пространства для загрузки полной истории файла.",
+  "codeViewer.history.loading": "Загрузка полных версий файла до и после этого изменения.",
+  "codeViewer.history.missing-reference":
+    "У этого предпросмотра нет ссылки на источник истории. Показан только сохранённый частичный diff.",
+  "codeViewer.history.unavailable":
+    "Полные версии файла для этой записи недоступны. Показан только сохранённый частичный diff.",
+  "codeViewer.history.error":
+    "Не удалось загрузить полные версии файла. Показан только сохранённый частичный diff.",
+  "codeViewer.history.retry": "Повторить загрузку",
   "git.review.selectAvailableLines":
     "Выделение включает недоступные или пропущенные строки. Выберите непрерывный диапазон видимых строк кода.",
   "codeViewer.close": "Закрыть просмотр кода",

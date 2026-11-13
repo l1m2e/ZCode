@@ -18,6 +18,7 @@ import {
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { FileDisplayInline } from "@/lib/fileDisplay.js";
 import { toWorkspaceRelativePath } from "@/lib/taskChangeSummary.js";
+import { withHistoricalDiffSource } from "@/lib/codeViewerSource.js";
 import { buildChangeSummaryFilePreviewSource } from "@/messageChangeSummaryPreview.js";
 import { OpenSplitButton } from "@/OpenSplitButton.js";
 import { logger } from "@/logger.js";
@@ -55,22 +56,30 @@ function openDiff(
   item: FileChangeItem,
   context: Pick<
     ConversationRowRenderContext,
-    "workspacePath" | "workspaceIdentity" | "workspaceRemoteSessionId" | "onOpenCodeViewer"
+    | "workspacePath"
+    | "workspaceIdentity"
+    | "workspaceRemoteSessionId"
+    | "sessionId"
+    | "onOpenCodeViewer"
   >,
+  header: TurnHeaderRow,
 ) {
   const patch = formatPatch(item.path, item.patches);
-  const { workspacePath, workspaceIdentity, workspaceRemoteSessionId, onOpenCodeViewer } = context;
+  const { workspacePath, onOpenCodeViewer } = context;
   if (!patch || !onOpenCodeViewer) return;
   const relativePath = toWorkspaceRelativePath(workspacePath, item.path);
-  onOpenCodeViewer({
-    type: "patch",
-    title: relativePath,
-    path: item.path,
-    patch,
-    workspacePath,
-    ...(workspaceIdentity ? { workspaceIdentity } : {}),
-    ...(workspaceRemoteSessionId ? { workspaceRemoteSessionId } : {}),
-  });
+  onOpenCodeViewer(
+    withHistoricalDiffSource(
+      {
+        type: "patch",
+        title: relativePath,
+        path: item.path,
+        patch,
+      },
+      context,
+      header,
+    ),
+  );
 }
 
 export function ConversationFileSummaryPanel({
@@ -144,49 +153,40 @@ export function ConversationFileSummaryPanel({
     [header.entityId, header.rowId],
   );
   const needsDetails = open || filtersSources;
+  const fetchFileChanges = context.fetchFileChanges;
 
   useEffect(() => {
-    if (!needsDetails || !context.fetchFileChanges || !target) return;
+    if (!needsDetails || !fetchFileChanges || !target) return;
 
     let disposed = false;
     // 运行中的 fileChanges 是某个 projection revision 的局部结果；turn
     // 进入终态后必须废弃局部 details，并用可持久缓存的终态策略重新读取。
     // requestKey 已同步隔离旧结果；同一摘要展开重读时保留已加载内容，避免卸载按钮丢失焦点。
     setLoadingDetails(true);
-    void context
-      .fetchFileChanges(target, {
-        cachePolicy,
-        fileChangesState,
-      })
-      .then(
-        (result) => {
-          if (disposed) return;
-          setLoadedDetails({ key: requestKey, result });
-          setLoadingDetails(false);
-        },
-        (loadError: unknown) => {
-          if (disposed) return;
-          logger.warn("[ConversationFileSummaryPanel] 读取文件变更详情失败", {
-            error: loadError instanceof Error ? loadError.message : String(loadError),
-            rowId: target.rowId,
-          });
-          setLoadedDetails({ key: requestKey, result: null });
-          setLoadingDetails(false);
-        },
-      );
+    void fetchFileChanges(target, {
+      cachePolicy,
+      fileChangesState,
+    }).then(
+      (result) => {
+        if (disposed) return;
+        setLoadedDetails({ key: requestKey, result });
+        setLoadingDetails(false);
+      },
+      (loadError: unknown) => {
+        if (disposed) return;
+        logger.warn("[ConversationFileSummaryPanel] 读取文件变更详情失败", {
+          error: loadError instanceof Error ? loadError.message : String(loadError),
+          rowId: target.rowId,
+        });
+        setLoadedDetails({ key: requestKey, result: null });
+        setLoadingDetails(false);
+      },
+    );
 
     return () => {
       disposed = true;
     };
-  }, [
-    cachePolicy,
-    context.fetchFileChanges,
-    fileChangesState,
-    needsDetails,
-    open,
-    requestKey,
-    target,
-  ]);
+  }, [cachePolicy, fetchFileChanges, fileChangesState, needsDetails, open, requestKey, target]);
 
   const handlePreviewRewind = useCallback(async () => {
     if (!context.previewFileRewind || !target) return;
@@ -332,11 +332,11 @@ export function ConversationFileSummaryPanel({
                         "flex w-full items-center gap-1 px-2 py-2 text-left transition-colors",
                         canReview ? "cursor-pointer hover:bg-hover/30" : "cursor-default",
                       )}
-                      onClick={() => openDiff(item, context)}
+                      onClick={() => openDiff(item, context, header)}
                       onKeyDown={(event) => {
                         if (event.key !== "Enter" && event.key !== " ") return;
                         event.preventDefault();
-                        openDiff(item, context);
+                        openDiff(item, context, header);
                       }}
                       role="button"
                       tabIndex={canReview ? 0 : -1}
@@ -382,7 +382,7 @@ export function ConversationFileSummaryPanel({
                           className="h-7 gap-1.5 rounded-lg bg-input px-2 text-ui-base"
                           onClick={(event) => {
                             event.stopPropagation();
-                            openDiff(item, context);
+                            openDiff(item, context, header);
                           }}
                           onPointerDown={(event) => event.stopPropagation()}
                         >

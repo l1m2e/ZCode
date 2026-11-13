@@ -1134,6 +1134,10 @@ export class ProductProjection {
       }
       return { ok: true, action, row, messageId };
     }
+    if (action === "fileChanges" && row.kind === "toolCall" && row.toolCallId) {
+      // 工具历史只放开只读查询；撤销仍经过下面的 turnHeader 与 availability 守卫。
+      return { ok: true, action, row, messageIds: this.getMessageIdsForTurnRow(row.rowId) };
+    }
     if (row.kind !== "turnHeader") {
       return {
         ok: false,

@@ -13,7 +13,7 @@ import { applyPatch, structuredPatch, type StructuredPatch } from "diff";
 
 interface FileChangeAggregate {
   afterContent?: string;
-  beforeContent: string | null;
+  beforeContent: string | undefined;
   fallbackAdditions: number;
   fallbackDeletions: number;
   patches: DiffHunk[];
@@ -123,14 +123,26 @@ function readModelCompleteFileChangesFallback(
 async function aggregateWorkspaceCheckpoints(
   checkpoints: readonly WorkspaceCheckpointWithTurn[],
   readArtifact: ReadArtifact,
+  options: { contentPath?: string; toolCallId?: string } = {},
 ): Promise<V4ConversationFileChangesResult> {
   const byPath = new Map<string, FileChangeAggregate>();
+  let incomplete = false;
 
   // checkpoint 顺序就是同一轮文件写入顺序，必须串行聚合 first-before → final-after。
   for (const { checkpoint } of checkpoints) {
-    const artifact = parseWorkspaceCheckpointArtifact(
-      JSON.parse(await readArtifact(checkpoint.snapshotRef)),
-    );
+    let artifact: ReturnType<typeof parseWorkspaceCheckpointArtifact>;
+    try {
+      artifact = parseWorkspaceCheckpointArtifact(
+        JSON.parse(await readArtifact(checkpoint.snapshotRef)),
+      );
+    } catch (error) {
+      if (options.contentPath === undefined) throw error;
+      // 缺失产物可能包含首写或末写，无法证明完整版本；只读详情保留 patch 并明确 unavailable。
+      incomplete = true;
+      continue;
+    }
+    // 旧 CheckpointCreated 不含 toolCallId；必须读取候选 artifact 后按权威工具 ID 筛选。
+    if (options.toolCallId !== undefined && artifact.toolCallId !== options.toolCallId) continue;
     for (const file of artifact.files) {
       const fallback = countPatchLines(file.structuredPatch);
       const afterContent = resolveCheckpointAfterContent(file);
@@ -138,7 +150,7 @@ async function aggregateWorkspaceCheckpoints(
       if (!existing) {
         byPath.set(file.path, {
           afterContent,
-          beforeContent: file.beforeContent,
+          beforeContent: resolveCheckpointBeforeContent(file),
           fallbackAdditions: fallback.additions,
           fallbackDeletions: fallback.deletions,
           patches: file.structuredPatch,
@@ -148,7 +160,8 @@ async function aggregateWorkspaceCheckpoints(
         });
         continue;
       }
-      existing.afterContent = afterContent ?? existing.afterContent;
+      // 末次重建失败就没有 final-after，不能用上一笔成功版本冒充末次结果。
+      existing.afterContent = afterContent;
       existing.fallbackAdditions += fallback.additions;
       existing.fallbackDeletions += fallback.deletions;
       existing.patches.push(...file.structuredPatch);
@@ -157,19 +170,19 @@ async function aggregateWorkspaceCheckpoints(
     }
   }
 
-  const items = Array.from(byPath.values())
-    .map((entry) => {
-      const patches =
-        entry.afterContent === undefined
-          ? entry.patches
-          : createFinalPatch(entry.path, entry.beforeContent ?? "", entry.afterContent);
-      const stat =
-        entry.afterContent === undefined
-          ? {
-              additions: entry.fallbackAdditions,
-              deletions: entry.fallbackDeletions,
-            }
-          : countPatchLines(patches);
+  const items: V4ConversationFileChangesResult["items"] = Array.from(byPath.values())
+    .map((entry): V4ConversationFileChangesResult["items"][number] => {
+      const available =
+        !incomplete && entry.beforeContent !== undefined && entry.afterContent !== undefined;
+      const patches = available
+        ? createFinalPatch(entry.path, entry.beforeContent!, entry.afterContent!)
+        : entry.patches;
+      const stat = available
+        ? countPatchLines(patches)
+        : {
+            additions: entry.fallbackAdditions,
+            deletions: entry.fallbackDeletions,
+          };
       return {
         path: entry.path,
         additions: stat.additions,
@@ -177,6 +190,17 @@ async function aggregateWorkspaceCheckpoints(
         writeCount: entry.writeCount,
         toolNames: Array.from(entry.toolNames).sort(),
         patches,
+        ...(options.contentPath === entry.path
+          ? {
+              content: available
+                ? {
+                    status: "available" as const,
+                    beforeContent: entry.beforeContent!,
+                    afterContent: entry.afterContent!,
+                  }
+                : { status: "unavailable" as const },
+            }
+          : {}),
       };
     })
     .sort((left, right) => left.path.localeCompare(right.path));
@@ -194,22 +218,38 @@ export async function readConversationFileChangesFromEvents(input: {
   messageIds: readonly string[];
   readArtifact: ReadArtifact;
   targetTurnId?: TurnId | null;
+  contentPath?: string;
+  toolCallId?: string;
 }): Promise<V4ConversationFileChangesResult> {
   const checkpoints = selectWorkspaceCheckpointsForFileSummary(
     input.events,
     input.messageIds,
     input.targetTurnId,
   );
-  const result = await aggregateWorkspaceCheckpoints(checkpoints, input.readArtifact);
-  if (result.items.length > 0) return result;
-  return (
-    readModelCompleteFileChangesFallback(input.events, input.targetTurnId) ?? {
-      files: 0,
-      additions: 0,
-      deletions: 0,
-      items: [],
+  let result = await aggregateWorkspaceCheckpoints(checkpoints, input.readArtifact, input);
+  if (result.items.length === 0 && input.toolCallId === undefined) {
+    // 整轮旧摘要只可用于整轮查询，绝不能作为单个工具的历史事实。
+    result = readModelCompleteFileChangesFallback(input.events, input.targetTurnId) ?? result;
+  }
+  if (input.contentPath !== undefined) {
+    const selected = result.items.find((item) => item.path === input.contentPath);
+    if (selected) {
+      selected.content ??= { status: "unavailable" };
+    } else {
+      // 没有该路径的历史证据也需明确回复；零写入占位不计入文件/行数摘要，更不读取当前磁盘。
+      result.items.push({
+        path: input.contentPath,
+        additions: 0,
+        deletions: 0,
+        writeCount: 0,
+        toolNames: [],
+        patches: [],
+        content: { status: "unavailable" },
+      });
+      result.items.sort((left, right) => left.path.localeCompare(right.path));
     }
-  );
+  }
+  return result;
 }
 
 export async function buildColdFileChangeSummaries(input: {
@@ -271,13 +311,56 @@ function createFinalPatch(path: string, beforeContent: string, afterContent: str
   );
 }
 
-function resolveCheckpointAfterContent(
-  file: ReturnType<typeof parseWorkspaceCheckpointArtifact>["files"][number],
-): string | undefined {
-  if (typeof file.afterContent === "string") return file.afterContent;
-  if (!file.existedBefore && file.beforeContent === null && file.structuredPatch.length === 0) {
-    return undefined;
+type CheckpointFile = ReturnType<typeof parseWorkspaceCheckpointArtifact>["files"][number];
+
+function resolveCheckpointBeforeContent(file: CheckpointFile): string | undefined {
+  // null 只在明确的新建文件中表示空文件；已存在但未记录的 before 是未知版本。
+  return file.beforeContent ?? (file.existedBefore === false ? "" : undefined);
+}
+
+function patchMatchesRecordedLines(beforeContent: string, hunks: readonly DiffHunk[]): boolean {
+  const lines = beforeContent.split("\n");
+  if (lines.at(-1) === "") lines.pop();
+  let previousEnd = 0;
+  let lineDelta = 0;
+  for (const hunk of hunks) {
+    if (
+      ![hunk.oldStart, hunk.oldLines, hunk.newStart, hunk.newLines].every(
+        (value) => Number.isInteger(value) && value >= 0,
+      )
+    )
+      return false;
+    // structuredPatch 的内部坐标始终从 1 起（包括零行 hunk），与序列化 unified header 不同。
+    const start = hunk.oldStart - 1;
+    const newStart = hunk.newStart - 1;
+    if (start < previousEnd || start > lines.length || newStart !== start + lineDelta) return false;
+    let oldLines = 0;
+    let newLines = 0;
+    for (const line of hunk.lines) {
+      if (line === "\\ No newline at end of file") continue;
+      const operation = line[0];
+      if (operation !== " " && operation !== "-" && operation !== "+") return false;
+      if (operation !== "+") {
+        if (lines[start + oldLines] !== line.slice(1)) return false;
+        oldLines += 1;
+      }
+      if (operation !== "-") newLines += 1;
+    }
+    if (oldLines !== hunk.oldLines || newLines !== hunk.newLines) return false;
+    previousEnd = start + oldLines;
+    lineDelta += newLines - oldLines;
   }
+  return true;
+}
+
+function resolveCheckpointAfterContent(file: CheckpointFile): string | undefined {
+  if (typeof file.afterContent === "string") return file.afterContent;
+  const beforeContent = resolveCheckpointBeforeContent(file);
+  if (beforeContent === undefined) return undefined;
+  // 没有持久 after 且没有 patch 时无法证明最终版本，不能把 before 当作未变化的 after。
+  if (file.structuredPatch.length === 0) return undefined;
+  // applyPatch 的 fuzzFactor=0 仍会扫描偏移位置；先核对持久行号和原文，禁止近似恢复历史。
+  if (!patchMatchesRecordedLines(beforeContent, file.structuredPatch)) return undefined;
   const patch: StructuredPatch = {
     oldFileName: file.path,
     newFileName: file.path,
@@ -285,11 +368,19 @@ function resolveCheckpointAfterContent(
     newHeader: undefined,
     hunks: file.structuredPatch,
   };
-  const patched = applyPatch(file.beforeContent ?? "", patch, {
-    autoConvertLineEndings: false,
-    fuzzFactor: 0,
-  });
-  return typeof patched === "string" ? patched : undefined;
+  try {
+    const patched = applyPatch(beforeContent, patch, {
+      autoConvertLineEndings: false,
+      fuzzFactor: 0,
+    });
+    return typeof patched === "string" &&
+      (file.afterContentLength === undefined || patched.length === file.afterContentLength)
+      ? patched
+      : undefined;
+  } catch {
+    // 旧产物中的坏 hunk 可能直接抛错；只标记历史版本不可恢复，保留原 patch 供展示。
+    return undefined;
+  }
 }
 
 function countPatchLines(hunks: readonly DiffHunk[]): { additions: number; deletions: number } {

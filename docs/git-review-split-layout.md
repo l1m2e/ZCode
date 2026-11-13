@@ -95,6 +95,29 @@ sequenceDiagram
 - 打开预览通过已有 onOpenCodeViewer 回调；文件动作通过 UI hook 和 IPlatformService。此改动不新增 Host、Agent、队列、snapshot 或连接，也不改变 desktop-continuous / web-remote-replayable 的同步语义。
 - 本地/远程右键动作能力位遵守 `git-review-file-context-menu.md`。二进制、不可用、截断数据使用明确降级提示，不开启不准确的评论功能。
 
+## 会话 diff 复用
+
+- 会话编辑文件名、变更摘要 Review 打开的 patch / multi-file-diff source 直接挂载预览，不显示文件目录及其开关；不修改原文件管理器目录偏好。
+- `PreviewPane` 头部复用 `gitReviewSettings.diffStyle` 的唯一 store setter，默认 split，新版左；内容经 `GitPane/contract.ts` 的 `DiffPreviewContent` 使用同一渲染、全局字体/换行与概览。普通文件预览不变。
+- source 保留历史定位，通过现有 conversation/fileChanges 按需取对应工具/回合的完整版本；完整内容对默认全文展开，不因旧 rich 阈值退回局部 patch。历史缺失明确提示并保留可用片段。patch 仅能引用真实存在且连续的同版本行，不补全缺失行。查询、状态与回归合同见 [历史全文规格](ui/historical-diff-full-content.md)。禁止把当前工作区文件当作工具执行时全文。
+- PreviewPane 保留 source 和滚动恢复记录；DiffPreviewContent 保留当前版本的评论草稿，inactive/resize 时只暂停重渲染，不卸载该 owner。真实滚动容器向 PreviewPane 上报位置并接受恢复 ref；恢复展示时重新测量概览。workspaceIdentity 与实际 sourcePath 沿原预览 scope 传递。
+
+```mermaid
+sequenceDiagram
+    participant Row as 会话工具文件名
+    participant Tabs as 既有预览标签 owner
+    participant Preview as PreviewPane
+    participant Content as 共享 diff 内容/评论 owner
+    participant Store as gitReviewSettings owner
+    Row->>Tabs: 打开历史 diff source + workspace scope
+    Tabs->>Preview: source（不挂载目录）
+    Preview->>Content: 历史内容、全局设置、可见性、滚动恢复接口
+    Preview->>Store: 切换单/双栏
+    Store-->>Content: diffStyle 投影
+    Preview->>Content: 隐藏重内容 / 恢复
+    Note over Content: 草稿保留；source/身份/内容版本变化才清理
+```
+
 ## 验收
 
 - 真实 Desktop E2E 检查 split 的 additions 几何位置在 deletions 左侧、远离 hunk 的首尾上下文可见；折行验收显式开启全局设置后检查长行宽度不溢出。本轮手测开关该设置，确认 split/unified、patch/plain-text 都在折行与横向滚动之间即时切换，概览位置同步，评论草稿不丢失；文件头与 diff 之间不再出现“新版 / 旧版”标签行。

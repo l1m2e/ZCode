@@ -1,7 +1,7 @@
 import type { MarkdownSelectionTarget } from "@/lib/conversationSelectionReference.js";
 /* eslint-disable max-lines -- PreviewPane 内容路由同时承载文本、图片、媒体、Office、PDF 和 PPTX 渲染。 */
 import type { BundledTheme } from "shiki";
-import { useMemo, type Ref, type SyntheticEvent, type UIEventHandler } from "react";
+import { type Ref, type SyntheticEvent, type UIEventHandler } from "react";
 import type { FileBinaryPreview, FileMediaPreview, FileTextSlice } from "@zcode/shared";
 import { inferCodeLanguage } from "@/lib/codeViewer.js";
 import type { CodeViewerSource } from "@/lib/codeViewer.js";
@@ -15,8 +15,6 @@ import type { WorkspaceFileDragPayload } from "@/lib/workspaceFileDrag.js";
 import { PreviewPaneMediaContent } from "@/previewPaneMediaContent.js";
 import { PdfPreviewContent } from "@/previewPanePdfContent.js";
 import { PptxPreviewContent } from "@/previewPanePptxContent.js";
-import { PatchFallbackContent } from "@/previewPanePatchFallbackContent.js";
-import { DiffViewer } from "@/components/ui/diff-viewer.js";
 import type { PdfViewerLabels, PdfViewerSource } from "@/components/ui/pdf-viewer.js";
 import type { PptxPreviewViewerLabels } from "@/components/ui/pptx-preview-viewer.js";
 import type { CodeCommentPreview, CodeCommentRange } from "@/lib/codeCommentContext.js";
@@ -28,7 +26,7 @@ import type { MediaCodeViewerSource, PptxReferencePreviewNavigation } from "@/li
 import { resolveCodeReviewContentProjection } from "@/previewPaneCodeReview.js";
 
 interface PreviewPaneContentProps {
-  source: CodeViewerSource;
+  source: Exclude<CodeViewerSource, { type: "patch" | "multi-file-diff" }>;
   filePreview: FileTextSlice | null;
   fileTooLarge: boolean;
   loadingInitial: boolean;
@@ -143,60 +141,6 @@ export function PreviewPaneContent({
     unavailable: intl.formatMessage({ id: "codeViewer.mediaUnavailable" }),
     unsupported: intl.formatMessage({ id: "codeViewer.mediaUnsupported" }),
   };
-  const multiFileDiffFiles = useMemo(() => {
-    if (source.type !== "multi-file-diff") {
-      return null;
-    }
-
-    // DiffViewer 是 memo 组件，预览 pane 父级滚动/加载状态刷新时，
-    // JSX 内联 oldFile/newFile 会生成新对象并强制 diff 重新渲染。
-    return {
-      oldFile: {
-        name: source.path ?? source.title,
-        contents: source.beforeContent,
-        cacheKey: `old:${source.path ?? source.title}:${source.beforeContent.length}:${source.beforeContent.slice(0, 100)}:${source.beforeContent.slice(-100)}`,
-      },
-      newFile: {
-        name: source.path ?? source.title,
-        contents: source.afterContent,
-        cacheKey: `new:${source.path ?? source.title}:${source.afterContent.length}:${source.afterContent.slice(0, 100)}:${source.afterContent.slice(-100)}`,
-      },
-    };
-  }, [
-    source.type,
-    source.type === "multi-file-diff" ? source.afterContent : null,
-    source.type === "multi-file-diff" ? source.beforeContent : null,
-    source.type === "multi-file-diff" ? source.path : null,
-    source.type === "multi-file-diff" ? source.title : null,
-  ]);
-
-  if (source.type === "patch") {
-    return (
-      // 兜底分支：patch 既不是 markdown/code/image，但仍然需要独立渲染。
-      <PatchFallbackContent
-        patch={source.patch}
-        codePreviewSettings={codePreviewSettings}
-        resolvedTheme={resolvedTheme}
-        sourcePath={source.path}
-        sourceTitle={source.title}
-      />
-    );
-  }
-
-  if (source.type === "multi-file-diff" && multiFileDiffFiles) {
-    return (
-      <DiffViewer
-        oldFile={multiFileDiffFiles.oldFile}
-        newFile={multiFileDiffFiles.newFile}
-        diffClassName="block"
-        fontSizePx={codePreviewSettings.fontSizePx}
-        lightTheme={codePreviewSettings.lightTheme}
-        darkTheme={codePreviewSettings.darkTheme}
-        themeType={resolvedTheme}
-      />
-    );
-  }
-
   if (source.type === "text") {
     const isMarkdownSource = source.language === "markdown";
     const isSvgSource = isSvgPath(source.path);

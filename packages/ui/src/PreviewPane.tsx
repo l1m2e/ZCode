@@ -12,7 +12,15 @@ import {
   useRef,
   useState,
 } from "react";
-import { ChevronRightIcon, Ellipsis, EyeIcon, FileCode2Icon } from "lucide-react";
+import {
+  ChevronRightIcon,
+  Columns2Icon,
+  RectangleHorizontalIcon,
+  Ellipsis,
+  EyeIcon,
+  FileCode2Icon,
+} from "lucide-react";
+import { DiffPreviewContent } from "@/GitPane/contract.js";
 import { nanoid } from "nanoid";
 import { Button } from "@/components/ui/button.js";
 import { toast } from "@/components/ui/toast.js";
@@ -520,6 +528,8 @@ export function PreviewPane({
   const { intl } = useZCodeIntl();
   const theme = useZCodeStore((state) => state.theme);
   const codePreviewSettings = useZCodeStore((state) => state.codePreviewSettings);
+  const diffStyle = useZCodeStore((state) => state.gitReviewSettings.diffStyle);
+  const setGitReviewSettings = useZCodeStore((state) => state.setGitReviewSettings);
   const source = useMemo(
     () => (rawSource ? normalizeCodeViewerSource(rawSource) : null),
     [rawSource],
@@ -1590,6 +1600,31 @@ export function PreviewPane({
       </div>
 
       <div className="flex shrink-0 pr-1.5 items-center gap-2">
+        {source.type === "patch" || source.type === "multi-file-diff" ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            data-preview-diff-style-toggle
+            aria-label={intl.formatMessage({
+              id:
+                diffStyle === "split" ? "git.review.diffStyleUnified" : "git.review.diffStyleSplit",
+            })}
+            title={intl.formatMessage({
+              id:
+                diffStyle === "split" ? "git.review.diffStyleUnified" : "git.review.diffStyleSplit",
+            })}
+            onClick={() =>
+              setGitReviewSettings({ diffStyle: diffStyle === "split" ? "unified" : "split" })
+            }
+          >
+            {diffStyle === "split" ? (
+              <Columns2Icon className="size-4" />
+            ) : (
+              <RectangleHorizontalIcon className="size-4" />
+            )}
+          </Button>
+        ) : null}
         {canOpenDiffFilePreview ? (
           <Button
             type="button"
@@ -1659,7 +1694,18 @@ export function PreviewPane({
     >
       {headerContainer ? createPortal(header, headerContainer) : header}
       <div className="min-h-0 flex-1">
-        {renderHeavyContent ? (
+        {source.type === "patch" || source.type === "multi-file-diff" ? (
+          <DiffPreviewContent
+            source={source}
+            workspacePath={sourceWorkspacePath}
+            codePreviewSettings={codePreviewSettings}
+            resolvedTheme={resolvedTheme}
+            diffStyle={diffStyle}
+            renderHeavyContent={renderHeavyContent}
+            onScroll={handlePreviewContentScroll}
+            scrollContainerRef={scrollContainerRef}
+          />
+        ) : renderHeavyContent ? (
           <PreviewPaneContent
             source={pptxSource ?? imageSource ?? pdfSource ?? mediaSource ?? source}
             filePreview={filePreview}

@@ -2361,6 +2361,12 @@ const zhCN: Record<string, string> = {
   "fileManager.hideNavigation": "收起文件导航",
   "fileManager.empty": "从目录中选择一个文件",
   "codeViewer.title": "代码查看",
+  "codeViewer.history.waiting": "正在等待来源工作区连接，以读取历史完整内容。",
+  "codeViewer.history.loading": "正在读取此次修改前后的完整文件内容。",
+  "codeViewer.history.missing-reference": "此历史预览缺少来源引用，仅显示已保存的局部差异。",
+  "codeViewer.history.unavailable": "此记录未保留可用的历史完整内容，仅显示已保存的局部差异。",
+  "codeViewer.history.error": "历史完整内容读取失败，当前仅显示已保存的局部差异。",
+  "codeViewer.history.retry": "重试读取",
   "git.review.selectAvailableLines":
     "选择区间包含不可用或省略的行，请在已显示的连续代码行内重新选择。",
   "codeViewer.close": "关闭代码面板",
