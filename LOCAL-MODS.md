@@ -115,6 +115,32 @@ ditto "packages/desktop/dist/mac-arm64/ZCode Preview.app" "/Applications/ZCode P
 | `f315f8c0` | dsh 风格会话统计芯片：输入框正下方居中零高行（轮/步/TPS + Token 用量/缓存命中，悬浮面板），数据来自会话事实归账（sessionStatsStore）与 usage.cumulative |
 | `88712019` | 修复 2026-10-30 rebase 自动合并丢失的 `V4ComposerToolbar` sessionId 解构（官方新增 sessionConfigPending 依赖它） |
 
+## 2026-11-16 同步（官方 b95ebaf v3.18.0 → fec97590 v3.18.2）冲突解法记录
+
+- 官方 v3.18.1/v3.18.2 共改 148 个文件：新增 `memory-diagnostics` 模块（adapters/bootstrap/
+  shared 三层）、系统凭据存储扩展、macOS 字体平滑、Windows 安装器改造等。rebase 后照例先
+  `pnpm install --frozen-lockfile`。
+- 冲突面很小（个人栈 55 个提交重放，仅 2 个文件 3 处冲突）：
+  - `packages/ui/src/store/index.ts`（两处，分别来自「代码字体」与「Git 审查设置」提交）：
+    官方 v3.18.2 新增 `FONT_SMOOTHING_STORAGE_KEY` / `applyFontSmoothing`（macOS 字体平滑），
+    与个人 `applyCodeFontFamily`、`GIT_REVIEW_SETTINGS_KEY` 同区新增，并存即可，官方在前。
+  - `architecture-policy.yaml`：官方 v3.18.1 新增 `cli-memory-diagnostics` managed 模块
+    （architecture:adopt 登记），与个人 `git-review` / `code-comment` 两模块并存，官方在前。
+    本次无 exceptions 冲突。
+- 自动合并但同区敏感的文件：`v4-gateway.ts`（官方 4 行 vs 个人 firstTokenAt）、i18n 五语言
+  文件、`App.tsx`、`WorkspaceShellLayout.tsx`、`shared/index.ts`、`platform.ts`、
+  `test-ids.ts`、desktop `main/index.ts`、`wdio.conf.ts`、`settingsSearchIndex.ts`、
+  `settingsCodePreview.tsx`——全部由 typecheck 背书。
+- 验证结果：根 typecheck 通过；CLI contracts/core/adapters/bootstrap 逐包 tsc 通过
+  （bootstrap 首跑报 `@zcode/adapters/memory-diagnostics` 找不到——官方新模块，构建
+  adapters dist 后通过，与「CLI 包间依赖走 dist」同因）；lint 0 错误；**oxlint 警告基线
+  从 84 涨到 526**，全部来自官方 v3.18.1/3.18.2 自带文件（191 个文件，多为新增测试），
+  对照实验：11 个个人/官方交集文件在官方 main 上 73 条 vs 本分支 69 条，个人改动零新增
+  警告，不要试图清零；`architecture:check --changed` OK（9 条全部已在基线，0 新增）。
+- 并发注意：本会话同步期间，另一会话把源码面板 WIP 提交为「feat(git): 新增多目录源代码
+  管理面板」并继续产出新 WIP；本轮 rebase 将该提交一并重放（新 SHA），stash 的后批 WIP
+  已原样恢复。多会话并行时 rebase 前先确认无他会在写。
+
 ## 2026-11-11 同步（官方 a9fe401e v3.17.2 → b95ebaf v3.18.0）冲突解法记录
 
 - 官方改了 51 个 `package.json` 与 lockfile（新增 `@napi-rs/keyring`、`@zcode/design-runtime`
