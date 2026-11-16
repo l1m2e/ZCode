@@ -105,7 +105,9 @@ export const ProjectSidebar = memo(function ProjectSidebar(props: ProjectSidebar
   const scrollRef = useRef<HTMLDivElement>(null);
   const [groupedToolbar, setGroupedToolbar] = useState<HTMLDivElement | null>(null);
   const [groupedSticky, setGroupedSticky] = useState<HTMLDivElement | null>(null);
-  const [editor, setEditor] = useState<{ project: VirtualProject | null } | null>(null);
+  const [editor, setEditor] = useState<{
+    project: VirtualProject | null;
+  } | null>(null);
   const [creating, setCreating] = useState(false);
   const [worktreeProject, setWorktreeProject] = useState<VirtualProject | null>(null);
   const managedWorktreeService = useManagedWorktreeService();
