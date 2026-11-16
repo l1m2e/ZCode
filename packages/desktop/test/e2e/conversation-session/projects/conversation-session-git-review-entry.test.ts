@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { open, utimes, writeFile } from "node:fs/promises";
+import { open, rm, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import {
@@ -30,6 +30,7 @@ import {
   getV4PaneSnapshot,
   selectV4TaskById,
   setV4ComposerText,
+  startNewV4Draft,
 } from "#e2e/helpers/v4-conversation";
 
 const CASE_TIMEOUT_MS = 120_000;
@@ -73,6 +74,32 @@ describe("SP13：status panel Git Changes 打开变更审阅", () => {
       expect(UNSTAGED_LABELS).toContain(review.sourceLabel);
       expect(review.rowCount).toBe(1);
       await ensureWideReviewPane();
+      // 默认选中与切换会话恢复必须在任何手动选文件前成立。
+      expect((await waitForGitReviewDiffContent()).headerText).toContain(FILE_NAME);
+      const secondFileName = "zz-review-selection.txt";
+      const secondFilePath = join(
+        DEFAULT_WORKSPACE,
+        ".zcode-e2e/conversation-session-git-review-entry",
+        secondFileName,
+      );
+      try {
+        await writeFile(secondFilePath, "second file selection regression\n", "utf8");
+        await clickGitReviewFileRow(secondFileName);
+        await startNewV4Draft();
+        await selectV4TaskById(PROVIDER_READINESS_HISTORY_SESSION_ID);
+        await waitForGitReview();
+        await browser.waitUntil(
+          async () => (await readGitReviewDetailSnapshot()).headerText.includes(secondFileName),
+          { timeout: 15_000, timeoutMsg: "切回会话没有恢复第二个文件" },
+        );
+      } finally {
+        await rm(secondFilePath, { force: true });
+      }
+      // 所选文件消失后必须自动回退仍存在的首项，不能再次要求点选。
+      await browser.waitUntil(
+        async () => (await readGitReviewDetailSnapshot()).headerText.includes(FILE_NAME),
+        { timeout: 15_000, timeoutMsg: "所选文件移除后没有回退首项" },
+      );
       await clickGitReviewFileRow(FILE_NAME);
       const detail = await waitForGitReviewDiffContent();
       expect(detail.headerText).toContain(FILE_NAME);
@@ -149,6 +176,44 @@ describe("SP13：status panel Git Changes 打开变更审阅", () => {
       await $(`[data-testid="${TID_GIT_REVIEW_DIFF_STYLE_TOGGLE}"]`).click();
       assertFullDiff(await waitForRenderedDiff("editor"), "editor");
       await expectPersistedReviewSettings("editor", false);
+      // 评论范围正确不代表选区可见：同时验证修改、新增、上下文的正文与行号背景。
+      const editorBaseline = await readRenderedDiff();
+      await selectDiffLines("additions", 5, 8);
+      await assertInlineDraft("additions", 5, 8);
+      // 移开指针，避免把库的 hover 混色误判为选中背景或清除后的残留。
+      await browser.performActions([
+        {
+          type: "pointer",
+          id: "git-review-mouse",
+          parameters: { pointerType: "mouse" },
+          actions: [{ type: "pointerMove", duration: 0, origin: "viewport", x: 0, y: 0 }],
+        },
+      ]);
+      await browser.releaseActions();
+      const editorSelected = await readRenderedDiff();
+      for (const number of [5, 6, 7, 8]) {
+        const before = editorBaseline.unifiedLines.find(
+          (line) => line.number === number && line.type !== "change-deletion",
+        )!;
+        const selected = editorSelected.unifiedLines.find(
+          (line) => line.number === number && line.type !== "change-deletion",
+        )!;
+        expect(selected.selected).toBe(true);
+        expect(selected.numberSelected).toBe(true);
+        expect(selected.background).not.toBe(before.background);
+        expect(selected.numberBackground).not.toBe(before.numberBackground);
+        expect(selected.mark).toBe(before.mark);
+      }
+      await browser.keys("Escape");
+      await waitForDraftClosed();
+      const editorCleared = await readRenderedDiff();
+      expect(editorCleared.unifiedLines.map((line) => line.selected)).not.toContain(true);
+      expect(editorCleared.unifiedLines.map((line) => line.background)).toEqual(
+        editorBaseline.unifiedLines.map((line) => line.background),
+      );
+      expect(editorCleared.unifiedLines.map((line) => line.numberBackground)).toEqual(
+        editorBaseline.unifiedLines.map((line) => line.numberBackground),
+      );
       await $(`[data-testid="${TID_GIT_REVIEW_DIFF_STYLE_TOGGLE}"]`).click();
       assertFullDiff(await waitForRenderedDiff("split"), "split");
       await expectPersistedReviewSettings("split", false);
@@ -559,6 +624,9 @@ function readRenderedDiff() {
               top: line.getBoundingClientRect().top,
               // editor 视觉合同需要对比增删行与上下文行的实际渲染背景。
               background: getComputedStyle(line).backgroundColor,
+              selected: line.hasAttribute("data-selected-line"),
+              numberSelected: numberCell?.hasAttribute("data-selected-line") ?? false,
+              numberBackground: numberCell ? getComputedStyle(numberCell).backgroundColor : null,
               mark: numberCell ? getComputedStyle(numberCell, "::before").backgroundColor : null,
             };
           },

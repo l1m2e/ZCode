@@ -37,13 +37,14 @@ const DIFF_SPLIT_REVERSE_UNSAFE_CSS = [
 ].join("");
 
 // editor 视觉模式：像 VSCode 编辑器一样阅读当前文件全文，不在行背景上铺增删色。
-// @pierre/diffs 的行背景、行号背景与逐词高亮都由 CSS 变量驱动，全部指回
-// --diffs-bg 即可"熄灭"；行号也恢复普通前景色，避免沿用增删行的强调色号。
-// 选择器与库内增删规则一致，后注入同优先级胜出。删除行折叠与逐行色条见下方
-// DIFF_EDITOR_MARKS_CSS。
+// 库按“增删背景 → 选中背景 → 最终行背景”合成颜色；覆盖 --diffs-line-bg 会
+// 抹掉新增/修改行及行号的选区。只重置增删背景层，让选中和悬停继续由库合成。
+// 行号仅在未选中时恢复普通前景色，保留库的选中行号配色。
+// 删除行折叠与逐行色条见下方 DIFF_EDITOR_MARKS_CSS。
 const DIFF_EDITOR_UNSAFE_CSS = [
-  "[data-line-type=change-addition]:is([data-gutter-buffer],[data-column-number],[data-line],[data-no-newline]){--diffs-line-bg:var(--diffs-bg);--diffs-diff-line-mix-target:var(--diffs-bg);color:var(--diffs-fg-number)}",
-  "[data-line-type=change-deletion]:is([data-gutter-buffer],[data-column-number],[data-line],[data-no-newline]){--diffs-line-bg:var(--diffs-bg);--diffs-diff-line-mix-target:var(--diffs-bg);color:var(--diffs-fg-number)}",
+  "[data-line-type=change-addition]:is([data-gutter-buffer],[data-column-number],[data-line],[data-no-newline]){--diffs-computed-diff-line-bg:var(--diffs-bg);--diffs-diff-line-mix-target:var(--diffs-bg)}",
+  "[data-line-type=change-deletion]:is([data-gutter-buffer],[data-column-number],[data-line],[data-no-newline]){--diffs-computed-diff-line-bg:var(--diffs-bg);--diffs-diff-line-mix-target:var(--diffs-bg)}",
+  ":is([data-line-type=change-addition],[data-line-type=change-deletion]):is([data-gutter-buffer],[data-column-number],[data-line],[data-no-newline]):not([data-selected-line]){color:var(--diffs-fg-number)}",
   "[data-line-type=change-addition] del,[data-line-type=change-addition] ins{background:transparent;color:inherit;text-decoration:none}",
   "[data-line-type=change-deletion] del,[data-line-type=change-deletion] ins{background:transparent;color:inherit;text-decoration:none}",
 ].join("");

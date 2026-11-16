@@ -112,8 +112,12 @@ export function GitPane({
     workspaceIdentity,
   });
   const resolvedTheme = resolveTheme(theme);
-  // 主从选中：左列表点选一个文件，右内容区展示它的 diff（spec: git-review-split-layout）。
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  // 选择意图仍由保活的 GitPane 唯一持有；暂空数据不能抹掉会话切回时要恢复的路径。
+  const [selection, setSelection] = useState<{
+    workspaceKey: string;
+    sourceId: GitChangeSourceId;
+    path: string;
+  } | null>(null);
   const [filterQuery, setFilterQuery] = useState("");
   const workspaceKey = workspaceIdentity?.trim() || workspacePath;
   const [diffStateByKey, setDiffStateByKey] = useState<Record<string, GitDiffLoadState>>({});
@@ -137,9 +141,18 @@ export function GitPane({
     [currentDataset],
   );
   const normalizedFileChangeFindQuery = fileChangeFindQuery.trim();
-  const selectedChange = useMemo(
-    () => currentChanges.find((change) => change.path === selectedPath) ?? null,
-    [currentChanges, selectedPath],
+  // 旧实现把暂空/失效路径清成 null，却从不补选，数据恢复后右侧一直提示选择文件。
+  // 在当前身份和来源内投影有效选择；回退不写导航状态，手机返回列表不会被刷新打断。
+  const selectedChange =
+    (selection?.workspaceKey === workspaceKey && selection.sourceId === currentDataset.id
+      ? currentChanges.find((change) => change.path === selection.path)
+      : null) ??
+    currentChanges[0] ??
+    null;
+  const selectedPath = selectedChange?.path ?? null;
+  const setSelectedPath = useCallback(
+    (path: string) => setSelection({ workspaceKey, sourceId: currentDataset.id, path }),
+    [workspaceKey, currentDataset.id],
   );
 
   const emptyStateCopy = useMemo(() => {
@@ -224,29 +237,11 @@ export function GitPane({
   }, [gitState.revision, workspaceKey, workspacePath]);
 
   useEffect(() => {
-    setSelectedPath(null);
+    setSelection(null);
     setFilterQuery("");
     setFileRevealRequest(null);
     setNarrowView("list");
   }, [workspaceKey, currentDataset.id]);
-
-  useEffect(() => {
-    if (!selectedPath) {
-      return;
-    }
-
-    if (!currentChanges.some((change) => change.path === selectedPath)) {
-      setSelectedPath(null);
-    }
-  }, [currentChanges, selectedPath]);
-
-  useEffect(() => {
-    if (!isNarrowPane) {
-      return;
-    }
-
-    setNarrowView(selectedPath ? "content" : "list");
-  }, [isNarrowPane, selectedPath]);
 
   const loadDiffForChange = useCallback(
     (change: GitPaneFileChange, sourceId: GitChangeSourceId) => {
@@ -413,12 +408,13 @@ export function GitPane({
     currentDataset.id,
     fileChangeFindNavigationRequestId,
     loadDiffForChange,
+    setSelectedPath,
   ]);
 
   const handleSelectSource = (nextSourceId: string) => {
     logger.info(`[GitPane] 切换来源 workspace=${workspacePath} source=${nextSourceId}`);
     onSelectSource(nextSourceId as GitChangeSourceId);
-    setSelectedPath(null);
+    setSelection(null);
     setNarrowView("list");
   };
 
