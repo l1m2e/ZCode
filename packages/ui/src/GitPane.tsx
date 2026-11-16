@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { usePanelRef } from "react-resizable-panels";
 import type { GitChangeSourceId, GitDiffResult } from "@zcode/shared";
 import {
   TID_GIT_PANE,
@@ -41,6 +42,7 @@ import {
   getGitPaneDiffFindContent,
   getSourceMessageId,
 } from "@/GitPane/helpers.js";
+import { useGitEmptyStateCopy } from "@/GitPane/useGitEmptyStateCopy.js";
 import { GitPaneFileList } from "@/GitPane/GitPaneFileList.js";
 import { GitPaneDiffContent, GitPaneDiffEmptyState } from "@/GitPane/GitPaneDiffContent.js";
 import { getFileChangeFindState } from "@/GitPane/fileChangeFindSearch.js";
@@ -50,6 +52,7 @@ import { resolveTheme } from "@/useTheme.js";
 import { getWorkspaceFileRelativePath } from "@/workspace-file-tree/model.js";
 
 interface GitDiffLoadState {
+  revision: number;
   loading: boolean;
   diff: GitDiffResult | null;
 }
@@ -64,6 +67,8 @@ export function GitPane({
   gitState,
   isDesktop,
   selectedSourceId,
+  sourceControl,
+  selectionRequest,
   fileChangeFindActiveIndex,
   fileChangeFindNavigationRequestId,
   fileChangeFindQuery,
@@ -82,6 +87,18 @@ export function GitPane({
   gitState: GitPaneRepositoryState;
   isDesktop?: boolean;
   selectedSourceId: GitChangeSourceId;
+  sourceControl?: {
+    header: ReactNode;
+    renderGroupHeader: (section: string, changes: readonly GitPaneFileChange[]) => ReactNode;
+    renderActions: (change: GitPaneFileChange) => ReactNode;
+    collapsedSections: ReadonlySet<string>;
+    onToggleSection: (section: string) => void;
+  };
+  selectionRequest?: {
+    sourceId: GitChangeSourceId;
+    path: string;
+    requestId: number;
+  } | null;
   fileChangeFindActiveIndex: number;
   fileChangeFindNavigationRequestId: number;
   fileChangeFindQuery: string;
@@ -120,6 +137,11 @@ export function GitPane({
   } | null>(null);
   const [filterQuery, setFilterQuery] = useState("");
   const workspaceKey = workspaceIdentity?.trim() || workspacePath;
+  const scopedDiffKey = useCallback(
+    (source: GitChangeSourceId, path: string) =>
+      JSON.stringify([workspaceKey, workspacePath, getDiffCacheKey(source, path)]),
+    [workspaceKey, workspacePath],
+  );
   const [diffStateByKey, setDiffStateByKey] = useState<Record<string, GitDiffLoadState>>({});
   const diffGenerationRef = useRef(0);
   const pendingDiffKeysRef = useRef(new Set<string>());
@@ -137,81 +159,51 @@ export function GitPane({
     gitState.sourceOptions.find((option) => option.id === selectedSourceId) ?? defaultSourceOption;
   const currentDataset = gitState.datasets[currentSourceOption.id] ?? gitState.datasets.unstaged;
   const currentChanges = useMemo(
-    () => currentDataset.sections.flatMap((section) => section.changes),
-    [currentDataset],
+    () =>
+      sourceControl
+        ? [...gitState.datasets.staged.sections, ...gitState.datasets.unstaged.sections].flatMap(
+            (section) =>
+              section.changes.map((change) =>
+                change.section === "untracked"
+                  ? { ...change, section: "unstaged" as const }
+                  : change,
+              ),
+          )
+        : currentDataset.sections.flatMap((section) => section.changes),
+    [
+      currentDataset,
+      sourceControl,
+      gitState.datasets.staged.sections,
+      gitState.datasets.unstaged.sections,
+    ],
   );
   const normalizedFileChangeFindQuery = fileChangeFindQuery.trim();
   // 旧实现把暂空/失效路径清成 null，却从不补选，数据恢复后右侧一直提示选择文件。
   // 在当前身份和来源内投影有效选择；回退不写导航状态，手机返回列表不会被刷新打断。
   const selectedChange =
-    (selection?.workspaceKey === workspaceKey && selection.sourceId === currentDataset.id
-      ? currentChanges.find((change) => change.path === selection.path)
+    (selection?.workspaceKey === workspaceKey &&
+    (sourceControl || selection.sourceId === currentDataset.id)
+      ? (currentChanges.find(
+          (change) =>
+            change.path === selection.path &&
+            (!sourceControl || (change.isStaged ? "staged" : "unstaged") === selection.sourceId),
+        ) ??
+        (sourceControl ? currentChanges.find((change) => change.path === selection.path) : null))
       : null) ??
     currentChanges[0] ??
     null;
   const selectedPath = selectedChange?.path ?? null;
+  const selectedDiffSource = sourceControl
+    ? selectedChange?.isStaged
+      ? "staged"
+      : "unstaged"
+    : currentDataset.id;
   const setSelectedPath = useCallback(
     (path: string) => setSelection({ workspaceKey, sourceId: currentDataset.id, path }),
     [workspaceKey, currentDataset.id],
   );
 
-  const emptyStateCopy = useMemo(() => {
-    if (currentSourceOption.id === "last-turn") {
-      return {
-        title: intl.formatMessage({ id: "git.empty.lastTurnTitle" }),
-        description: intl.formatMessage({
-          id: "git.empty.lastTurnDescription",
-        }),
-      };
-    }
-
-    if (gitState.loading) {
-      return {
-        title: intl.formatMessage({ id: "common.loading" }),
-        description: intl.formatMessage({ id: "git.loading.description" }),
-      };
-    }
-
-    if (gitState.error) {
-      return {
-        title: intl.formatMessage({ id: "git.error.title" }),
-        description: intl.formatMessage(
-          { id: "git.error.description" },
-          { message: gitState.error },
-        ),
-      };
-    }
-
-    if (!gitState.summary.isGitAvailable) {
-      return {
-        title: intl.formatMessage({ id: "git.empty.gitUnavailableTitle" }),
-        description: intl.formatMessage({
-          id: "git.empty.gitUnavailableDescription",
-        }),
-      };
-    }
-
-    if (!gitState.summary.isRepository) {
-      return {
-        title: intl.formatMessage({ id: "git.empty.notRepositoryTitle" }),
-        description: intl.formatMessage({
-          id: "git.empty.notRepositoryDescription",
-        }),
-      };
-    }
-
-    return {
-      title: intl.formatMessage({ id: "git.empty.title" }),
-      description: intl.formatMessage({ id: "git.empty.description" }),
-    };
-  }, [
-    currentSourceOption.id,
-    gitState.error,
-    gitState.loading,
-    gitState.summary.isGitAvailable,
-    gitState.summary.isRepository,
-    intl,
-  ]);
+  const emptyStateCopy = useGitEmptyStateCopy(currentSourceOption.id, gitState);
 
   useEffect(() => {
     const element = rootRef.current;
@@ -231,9 +223,19 @@ export function GitPane({
   }, []);
 
   useEffect(() => {
-    diffGenerationRef.current += 1;
-    pendingDiffKeysRef.current.clear();
+    // revision 变化只让缓存过期；清空会卸载正文并把滚动位置夹到零。
+    // 目标变化仍清理缓存，key 的目标隔离同时阻止 effect 前的一帧串用旧正文。
     setDiffStateByKey({});
+  }, [workspaceKey, workspacePath]);
+
+  useEffect(() => {
+    diffGenerationRef.current += 1;
+    const pendingKeys = pendingDiffKeysRef.current;
+    pendingKeys.clear();
+    return () => {
+      diffGenerationRef.current += 1;
+      pendingKeys.clear();
+    };
   }, [gitState.revision, workspaceKey, workspacePath]);
 
   useEffect(() => {
@@ -243,14 +245,36 @@ export function GitPane({
     setNarrowView("list");
   }, [workspaceKey, currentDataset.id]);
 
+  const consumedSelectionRequest = useRef<number | null>(null);
+  useEffect(() => {
+    // 外部请求只消费一次；切来源后返回不能让旧请求抢走内部选择。
+    if (
+      !selectionRequest ||
+      selectionRequest.sourceId !== selectedSourceId ||
+      consumedSelectionRequest.current === selectionRequest.requestId
+    )
+      return;
+    consumedSelectionRequest.current = selectionRequest.requestId;
+    setSelection({
+      workspaceKey,
+      sourceId: selectionRequest.sourceId,
+      path: selectionRequest.path,
+    });
+    setFilterQuery("");
+    setNarrowView("content");
+  }, [selectionRequest, selectedSourceId, workspaceKey]);
+
   const loadDiffForChange = useCallback(
     (change: GitPaneFileChange, sourceId: GitChangeSourceId) => {
       if (sourceId === "last-turn" || change.diff) {
         return;
       }
 
-      const cacheKey = getDiffCacheKey(sourceId, change.path);
-      if (pendingDiffKeysRef.current.has(cacheKey) || diffStateByKey[cacheKey]?.diff) {
+      const cacheKey = scopedDiffKey(sourceId, change.path);
+      if (
+        pendingDiffKeysRef.current.has(cacheKey) ||
+        diffStateByKey[cacheKey]?.revision === gitState.revision
+      ) {
         return;
       }
 
@@ -258,6 +282,7 @@ export function GitPane({
       setDiffStateByKey((current) => ({
         ...current,
         [cacheKey]: {
+          revision: gitState.revision,
           loading: true,
           diff: current[cacheKey]?.diff ?? null,
         },
@@ -291,6 +316,7 @@ export function GitPane({
           setDiffStateByKey((current) => ({
             ...current,
             [cacheKey]: {
+              revision: gitState.revision,
               loading: false,
               diff,
             },
@@ -311,6 +337,7 @@ export function GitPane({
           setDiffStateByKey((current) => ({
             ...current,
             [cacheKey]: {
+              revision: gitState.revision,
               loading: false,
               diff: {
                 path: change.path,
@@ -328,35 +355,26 @@ export function GitPane({
           if (diffGenerationRef.current === generation) pendingDiffKeysRef.current.delete(cacheKey);
         });
     },
-    [diffStateByKey, gitService, workspacePath],
+    [diffStateByKey, gitService, workspacePath, scopedDiffKey, gitState.revision],
   );
 
   useEffect(() => {
-    if (!selectedPath) {
-      return;
-    }
-
-    const selectedFileChange = currentChanges.find((change) => change.path === selectedPath);
-    if (!selectedFileChange) {
-      return;
-    }
-
-    loadDiffForChange(selectedFileChange, currentDataset.id);
-  }, [currentChanges, currentDataset.id, selectedPath, loadDiffForChange]);
+    if (selectedChange) loadDiffForChange(selectedChange, selectedDiffSource);
+  }, [selectedChange, selectedDiffSource, loadDiffForChange]);
 
   const fileChangeFindTargets = useMemo(
     () =>
       currentChanges.map((change) => {
         const diffState =
           change.diff ??
-          diffStateByKey[getDiffCacheKey(currentDataset.id, change.path)]?.diff ??
+          diffStateByKey[scopedDiffKey(currentDataset.id, change.path)]?.diff ??
           null;
         return {
           path: change.path,
           content: getGitPaneDiffFindContent(diffState),
         };
       }),
-    [currentChanges, currentDataset.id, diffStateByKey],
+    [currentChanges, currentDataset.id, diffStateByKey, scopedDiffKey],
   );
   const fileChangeFindState = useMemo(
     () =>
@@ -422,7 +440,11 @@ export function GitPane({
     logger.info(
       `[GitPane] 选中变更文件 workspace=${workspacePath} source=${currentSourceOption.id} path=${change.path}`,
     );
-    setSelectedPath(change.path);
+    setSelection({
+      workspaceKey,
+      sourceId: sourceControl ? (change.isStaged ? "staged" : "unstaged") : currentDataset.id,
+      path: change.path,
+    });
     if (isNarrowPane) {
       setNarrowView("content");
     }
@@ -515,20 +537,42 @@ export function GitPane({
 
   const contextMenuLabels = useMemo(
     () => ({
-      copyAbsolutePath: intl.formatMessage({ id: "fileActions.copyAbsolutePath" }),
-      copyRelativePath: intl.formatMessage({ id: "fileActions.copyRelativePath" }),
-      revealInFileManager: intl.formatMessage({ id: "git.changeContext.revealInFileManager" }),
-      revealInFileTree: intl.formatMessage({ id: "git.changeContext.revealInFileTree" }),
+      copyAbsolutePath: intl.formatMessage({
+        id: "fileActions.copyAbsolutePath",
+      }),
+      copyRelativePath: intl.formatMessage({
+        id: "fileActions.copyRelativePath",
+      }),
+      revealInFileManager: intl.formatMessage({
+        id: "git.changeContext.revealInFileManager",
+      }),
+      revealInFileTree: intl.formatMessage({
+        id: "git.changeContext.revealInFileTree",
+      }),
     }),
     [intl],
   );
 
+  const scmListPanelRef = usePanelRef();
+  const scmListInitialized = useRef(false);
   const hasChanges = currentChanges.length > 0;
-  const diffStyle = gitReviewSettings.diffStyle;
+
   const showListColumn =
-    hasChanges && (isNarrowPane ? narrowView === "list" : gitReviewSettings.fileListVisible);
-  const showContentColumn = hasChanges && (!isNarrowPane || narrowView === "content");
+    (hasChanges || Boolean(sourceControl)) &&
+    (isNarrowPane
+      ? narrowView === "list"
+      : Boolean(sourceControl) || gitReviewSettings.fileListVisible);
+  const showContentColumn =
+    (hasChanges || Boolean(sourceControl)) && (!isNarrowPane || narrowView === "content");
   const showSplitLayout = showListColumn && showContentColumn;
+  const initializeScmList = (pixels: number) => {
+    // 首次双栏实测后初始化，避免 effect 早于注册而被默认比例覆盖。
+    if (!showSplitLayout) scmListInitialized.current = false;
+    else if (!scmListInitialized.current && pixels > 0) {
+      scmListInitialized.current = true;
+      scmListPanelRef.current?.resize("320px");
+    }
+  };
   // 按可见栏组合隔离布局记录，单栏占满宽度不能覆盖用户调好的双栏比例。
   const reviewPanelIds = showSplitLayout
     ? GIT_REVIEW_SPLIT_PANEL_IDS
@@ -536,110 +580,107 @@ export function GitPane({
       ? GIT_REVIEW_LIST_PANEL_IDS
       : GIT_REVIEW_DIFF_PANEL_IDS;
   const selectedDiffCacheKey = selectedChange
-    ? getDiffCacheKey(currentDataset.id, selectedChange.path)
+    ? scopedDiffKey(selectedDiffSource, selectedChange.path)
     : null;
   const cachedSelectedDiffState = selectedDiffCacheKey
     ? diffStateByKey[selectedDiffCacheKey]
     : undefined;
   const selectedDiffState = selectedChange?.diff ?? cachedSelectedDiffState?.diff ?? null;
-  const isSelectedDiffLoading = Boolean(
-    selectedChange &&
-    !selectedChange.diff &&
-    (!cachedSelectedDiffState || cachedSelectedDiffState.loading),
+  // 同 source/path 的后台重取保留正文；没有可展示内容时才显示初始 loading。
+  const isSelectedDiffLoading = Boolean(selectedChange && !selectedDiffState);
+
+  const diffStyleAction = (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      data-testid={TID_GIT_REVIEW_DIFF_STYLE_TOGGLE}
+      aria-label={intl.formatMessage({
+        id:
+          gitReviewSettings.diffStyle === "split"
+            ? "git.review.diffStyleUnified"
+            : gitReviewSettings.diffStyle === "unified"
+              ? "git.review.diffStyleEditor"
+              : "git.review.diffStyleSplit",
+      })}
+      onClick={handleToggleDiffStyle}
+    >
+      {gitReviewSettings.diffStyle === "split" ? (
+        <Columns2Icon className="size-4" />
+      ) : gitReviewSettings.diffStyle === "editor" ? (
+        <FilePenLineIcon className="size-4" />
+      ) : (
+        <RectangleHorizontalIcon className="size-4" />
+      )}
+    </Button>
   );
 
   return (
     <section
       ref={rootRef}
       data-testid={TID_GIT_PANE}
+      data-git-selected-source={selectedDiffSource}
+      data-git-selected-path={selectedPath}
       className="flex h-full min-h-0 flex-col bg-background"
     >
-      <div className="flex items-center justify-between gap-3 p-3">
-        <Select value={currentSourceOption.id} onValueChange={handleSelectSource}>
-          <SelectTrigger className="max-w-full" size="lg">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent align="start">
-            {gitState.sourceOptions.map((option) => (
-              <SelectItem key={option.id} value={option.id} disabled={option.disabled}>
-                {intl.formatMessage({ id: getSourceMessageId(option.id) })}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      {!sourceControl && (
+        <div className="flex items-center justify-between gap-3 p-3">
+          <Select value={currentSourceOption.id} onValueChange={handleSelectSource}>
+            <SelectTrigger className="max-w-full" size="lg">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="start">
+              {gitState.sourceOptions.map((option) => (
+                <SelectItem key={option.id} value={option.id} disabled={option.disabled}>
+                  {intl.formatMessage({ id: getSourceMessageId(option.id) })}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-        <div className="flex items-center gap-1">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            data-testid={TID_GIT_REVIEW_DIFF_STYLE_TOGGLE}
-            title={intl.formatMessage({
-              id:
-                diffStyle === "split"
-                  ? "git.review.diffStyleUnified"
-                  : diffStyle === "unified"
-                    ? "git.review.diffStyleEditor"
-                    : "git.review.diffStyleSplit",
-            })}
-            aria-label={intl.formatMessage({
-              id:
-                diffStyle === "split"
-                  ? "git.review.diffStyleUnified"
-                  : diffStyle === "unified"
-                    ? "git.review.diffStyleEditor"
-                    : "git.review.diffStyleSplit",
-            })}
-            onClick={handleToggleDiffStyle}
-          >
-            {diffStyle === "split" ? (
-              <Columns2Icon className="size-4" />
-            ) : diffStyle === "editor" ? (
-              <FilePenLineIcon className="size-4" />
-            ) : (
-              <RectangleHorizontalIcon className="size-4" />
-            )}
-          </Button>
-          {/* 窄面板下列表/内容切换由内容头部的返回按钮承担，这里只保留宽面板的列表显隐开关。 */}
-          {!isNarrowPane ? (
+          <div className="flex items-center gap-1">
+            {diffStyleAction}
+            {/* 窄面板下列表/内容切换由内容头部的返回按钮承担，这里只保留宽面板的列表显隐开关。 */}
+            {!isNarrowPane ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                data-testid={TID_GIT_REVIEW_LIST_TOGGLE}
+                title={intl.formatMessage({
+                  id: gitReviewSettings.fileListVisible
+                    ? "git.review.listToggleHide"
+                    : "git.review.listToggleShow",
+                })}
+                aria-label={intl.formatMessage({
+                  id: gitReviewSettings.fileListVisible
+                    ? "git.review.listToggleHide"
+                    : "git.review.listToggleShow",
+                })}
+                onClick={handleToggleFileList}
+              >
+                <PanelLeftIcon
+                  className={cn("size-4", gitReviewSettings.fileListVisible && "text-foreground")}
+                />
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="ghost"
               size="icon-sm"
-              data-testid={TID_GIT_REVIEW_LIST_TOGGLE}
-              title={intl.formatMessage({
-                id: gitReviewSettings.fileListVisible
-                  ? "git.review.listToggleHide"
-                  : "git.review.listToggleShow",
-              })}
-              aria-label={intl.formatMessage({
-                id: gitReviewSettings.fileListVisible
-                  ? "git.review.listToggleHide"
-                  : "git.review.listToggleShow",
-              })}
-              onClick={handleToggleFileList}
+              disabled={gitState.loading}
+              onClick={onRefresh}
+              title={intl.formatMessage({ id: "git.action.refresh" })}
+              aria-label={intl.formatMessage({ id: "git.action.refresh" })}
             >
-              <PanelLeftIcon
-                className={cn("size-4", gitReviewSettings.fileListVisible && "text-foreground")}
-              />
+              <RefreshCw className={cn("size-4", gitState.loading && "animate-spin")} />
             </Button>
-          ) : null}
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            disabled={gitState.loading}
-            onClick={onRefresh}
-            title={intl.formatMessage({ id: "git.action.refresh" })}
-            aria-label={intl.formatMessage({ id: "git.action.refresh" })}
-          >
-            <RefreshCw className={cn("size-4", gitState.loading && "animate-spin")} />
-          </Button>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="flex min-h-0 flex-1">
-        {!hasChanges ? (
+        {!hasChanges && !sourceControl ? (
           <div className="flex h-full flex-1 flex-col items-center justify-center px-6 text-center">
             <FileTextIcon className="size-8 text-foreground-subtlest" />
             <p className="mt-3 text-ui-base font-medium text-foreground">{emptyStateCopy.title}</p>
@@ -647,7 +688,7 @@ export function GitPane({
           </div>
         ) : (
           <ResizablePanelGroup
-            layoutId="git-review-layout"
+            layoutId={sourceControl ? "source-control-layout" : "git-review-layout"}
             orientation="horizontal"
             panelIds={reviewPanelIds}
             disabled={!showSplitLayout}
@@ -656,13 +697,29 @@ export function GitPane({
             {showListColumn ? (
               <ResizablePanel
                 id="file-list"
-                defaultSize="240px"
-                minSize={showSplitLayout ? "180px" : "0px"}
+                panelRef={sourceControl ? scmListPanelRef : undefined}
+                onResize={sourceControl ? (size) => initializeScmList(size.inPixels) : undefined}
+                defaultSize={sourceControl ? "320px" : "240px"}
+                // SCM 是固定窄栏；默认相对缩放会在全屏时把提交区放大挤占 diff。
+                groupResizeBehavior={
+                  sourceControl ? "preserve-pixel-size" : "preserve-relative-size"
+                }
+                minSize={showSplitLayout ? (sourceControl ? "280px" : "180px") : "0px"}
                 maxSize={showSplitLayout ? "60%" : "100%"}
-                className="h-full min-h-0 min-w-0"
+                className="flex h-full min-h-0 min-w-0 flex-col"
               >
+                {/* 提交区必须属于列表栏；放在分栏外会把整个 diff 下压。 */}
+                {sourceControl && (
+                  <div className="max-h-[60%] shrink-0 overflow-y-auto">{sourceControl.header}</div>
+                )}
                 <GitPaneFileList
                   changes={currentChanges}
+                  selectedSection={sourceControl ? selectedChange?.section : undefined}
+                  renderGroupHeader={sourceControl?.renderGroupHeader}
+                  renderActions={sourceControl?.renderActions}
+                  collapsedSections={sourceControl?.collapsedSections}
+                  onToggleSection={sourceControl?.onToggleSection}
+                  onOpenFile={onOpenCodeViewer ? handleOpenFilePreview : undefined}
                   filterQuery={filterQuery}
                   onFilterQueryChange={setFilterQuery}
                   selectedPath={selectedPath}
@@ -684,7 +741,9 @@ export function GitPane({
             ) : null}
             {showSplitLayout ? (
               <ResizableHandle
-                aria-label={intl.formatMessage({ id: "git.review.resizeFileList" })}
+                aria-label={intl.formatMessage({
+                  id: "git.review.resizeFileList",
+                })}
                 className={cn(
                   WORKSPACE_VERTICAL_RESIZE_HANDLE_CLASS_NAME,
                   "before:pointer-events-none before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2 before:bg-border before:content-[''] after:inset-y-0 after:rounded-none after:left-1/2 after:-translate-x-1/2",
@@ -699,6 +758,7 @@ export function GitPane({
               >
                 {selectedChange ? (
                   <GitPaneDiffContent
+                    headerActions={sourceControl ? diffStyleAction : undefined}
                     change={selectedChange}
                     diffState={selectedDiffState}
                     isDiffLoading={isSelectedDiffLoading}

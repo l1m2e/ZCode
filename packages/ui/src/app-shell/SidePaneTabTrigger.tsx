@@ -336,7 +336,7 @@ export function SidePaneTabIcon({ tab }: { tab: WorkspaceSidePaneTab }) {
     return <ShieldCheckIcon className="size-3.5" />;
   }
 
-  if (tab.type === "git") {
+  if (tab.type === "source-control" || tab.type === "git") {
     return <FileDiffIcon className="size-3.5" />;
   }
 
@@ -555,6 +555,8 @@ export function getSidePaneTabTitle(
   if (tab.type === "browser-permissions") {
     return formatMessage({ id: "browser.permission.settings" });
   }
+
+  if (tab.type === "source-control") return formatMessage({ id: "scm.title" });
 
   if (tab.type === "git") {
     return formatMessage({ id: "sidePane.review" });

@@ -246,6 +246,7 @@ export function App({
     handleOpenGit,
     handleOpenWhiteboard,
     handleOpenDeveloperTools,
+    handleOpenSourceControl,
     handleOpenExtensionView,
     handleOpenExtensionLogs,
     handleOpenFileManager,
@@ -1377,6 +1378,7 @@ export function App({
             handleOpenBrowserPermissionSettings={handleOpenBrowserPermissionSettings}
             handleOpenWhiteboard={handleOpenWhiteboard}
             handleOpenDeveloperTools={handleOpenDeveloperTools}
+            handleOpenSourceControl={handleOpenSourceControl}
             handleOpenFileManager={handleOpenFileManager}
             handleNavigateFileManager={handleNavigateFileManager}
             handleOpenPluginMarket={handleOpenPluginMarket}

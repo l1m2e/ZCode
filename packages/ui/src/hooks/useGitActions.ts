@@ -1,64 +1,88 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState, useSyncExternalStore } from "react";
 import type { GitChangeSourceId } from "@zcode/shared";
-import { toast } from "@/components/ui/toast.js";
-import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import { logger } from "@/logger.js";
+import { useServices } from "@/hooks/useServices.js";
 
-export function useGitActions(options: { workspacePath: string }) {
-  const { workspacePath } = options;
-  const { intl } = useZCodeIntl();
+// 同一目标的所有 UI 入口共享 admission，避免 stage/commit 与逐文件操作交错。
+const pendingTargets = new Set<string>();
+const listeners = new Set<() => void>();
+const subscribe = (listener: () => void) => {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+};
+const notify = () => {
+  for (const listener of listeners) listener();
+};
+
+export function useGitActions(options: {
+  workspacePath: string;
+  workspaceIdentity?: string;
+  onRefresh?: () => void;
+}) {
+  const { workspacePath, workspaceIdentity, onRefresh } = options;
+  const { gitService } = useServices();
+  const key = JSON.stringify([workspaceIdentity?.trim() || workspacePath, workspacePath]);
+  const pending = useSyncExternalStore(
+    subscribe,
+    () => pendingTargets.has(key),
+    () => false,
+  );
   const [refreshVersion, setRefreshVersion] = useState(0);
-
-  const announcePlaceholder = useCallback(
-    (action: string, detail: Record<string, unknown>) => {
-      logger.info(`[GitPane] ${action} workspace=${workspacePath}`, detail);
-      toast(intl.formatMessage({ id: "diff.placeholder.toast" }));
-    },
-    [intl, workspacePath],
-  );
-
   const refresh = useCallback(
-    async (sourceId: GitChangeSourceId) => {
+    async (_sourceId?: GitChangeSourceId) => {
       setRefreshVersion((value) => value + 1);
-      announcePlaceholder("refresh", { sourceId });
+      onRefresh?.();
     },
-    [announcePlaceholder],
+    [onRefresh],
   );
-
+  const run = useCallback(
+    async <T>(operation: () => Promise<T>): Promise<T> => {
+      if (pendingTargets.has(key))
+        throw new Error("A Git operation is already running for this workspace.");
+      pendingTargets.add(key);
+      notify();
+      try {
+        return await operation();
+      } finally {
+        pendingTargets.delete(key);
+        notify();
+        await refresh();
+      }
+    },
+    [key, refresh],
+  );
   const stagePaths = useCallback(
-    async (paths: string[]) => {
-      announcePlaceholder("stagePaths", { count: paths.length, paths });
-    },
-    [announcePlaceholder],
+    (paths: string[]) => run(() => gitService.stagePaths({ workspacePath, paths })),
+    [gitService, run, workspacePath],
   );
-
   const unstagePaths = useCallback(
-    async (paths: string[]) => {
-      announcePlaceholder("unstagePaths", { count: paths.length, paths });
-    },
-    [announcePlaceholder],
+    (paths: string[]) => run(() => gitService.unstagePaths({ workspacePath, paths })),
+    [gitService, run, workspacePath],
   );
-
   const discardPaths = useCallback(
-    async (paths: string[]) => {
-      announcePlaceholder("discardPaths", { count: paths.length, paths });
-    },
-    [announcePlaceholder],
+    (paths: string[], staged = false) =>
+      run(() => gitService.discardPaths({ workspacePath, paths, staged })),
+    [gitService, run, workspacePath],
   );
-
   const commit = useCallback(
-    async (message: string) => {
-      announcePlaceholder("commit", { messageLength: message.trim().length });
-    },
-    [announcePlaceholder],
+    (message: string, paths: string[]) =>
+      run(() => gitService.commit({ workspacePath, message, paths, stagedOnly: true })),
+    [gitService, run, workspacePath],
   );
-
+  const push = useCallback(
+    () => run(() => gitService.push({ workspacePath })),
+    [gitService, run, workspacePath],
+  );
   return {
+    pending,
+    run,
     refreshVersion,
     refresh,
     stagePaths,
     unstagePaths,
     discardPaths,
     commit,
+    push,
   };
 }

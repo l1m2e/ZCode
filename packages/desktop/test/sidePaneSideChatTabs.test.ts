@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  activateSourceControlSidePane,
+  activateGitSidePane,
+  closeSidePaneTab,
+  restoreSidePaneTab,
+  normalizeWorkspaceSidePaneState,
   getVisibleSidePaneTabs,
   isSidePaneTabVisibleInScope,
   openSideChatPane,
@@ -67,5 +72,36 @@ describe("独立侧边会话 tab（side-chat）", () => {
     expect(
       getVisibleSidePaneTabs(state.tabs, { workspaceKey: "ident-1", ownerTaskId: "task-b" }),
     ).toHaveLength(1);
+  });
+});
+
+describe("SCM 标签生命周期", () => {
+  it("重复打开复用，审查保留SCM，JSON恢复及关闭重开保持类型", () => {
+    const first = activateSourceControlSidePane(null);
+    const scoped = {
+      ...first,
+      tabs: first.tabs.map((tab) => ({ ...tab, workspaceKey: "remote-identity" })),
+    };
+    const twice = activateSourceControlSidePane(scoped);
+    expect(twice.tabs).toHaveLength(1);
+    const review = activateGitSidePane(twice);
+    expect(review.tabs.map((tab) => tab.type)).toEqual(["source-control", "git"]);
+    const decoded = normalizeWorkspaceSidePaneState(JSON.parse(JSON.stringify(review)));
+    expect(decoded?.tabs[0]).toMatchObject({
+      type: "source-control",
+      workspaceKey: "remote-identity",
+    });
+    const scm = decoded!.tabs[0]!;
+    expect(
+      isSidePaneTabVisibleInScope(scm, { workspaceKey: "remote-identity", ownerTaskId: "task-2" }),
+    ).toBe(true);
+    expect(
+      isSidePaneTabVisibleInScope(scm, { workspaceKey: "local-path", ownerTaskId: "task-2" }),
+    ).toBe(false);
+    const closed = closeSidePaneTab(decoded, scm.id);
+    expect(closed?.tabs.some((tab) => tab.type === "source-control")).toBe(false);
+    const restored = restoreSidePaneTab(closed, scm);
+    expect(restored.activeTabId).toBe("source-control");
+    expect(restored.tabs.filter((tab) => tab.type === "source-control")).toHaveLength(1);
   });
 });

@@ -57,6 +57,8 @@ export interface GitRepositoryAutoRefreshWatchPath {
 
 export interface GitFileChange {
   path: string;
+  /** 重命名前的绝对路径；写操作由 Repo 校验并同时处理两端。 */
+  originalPath?: string | null;
   repoRelativePath: string;
   workspaceRelativePath: string;
   x?: string;
@@ -269,8 +271,18 @@ export interface ManagedWorktreeCreation {
 
 /** 创建结束时发布一次；renderer 据此切换到真实会话或恢复草稿。 */
 export type ManagedWorktreeCreationSettlement =
-  | { creationId: string; outcome: "session-started"; workspacePath: string; sessionId: string }
-  | { creationId: string; outcome: "dismissed"; workspacePath: string; promptText: string | null };
+  | {
+      creationId: string;
+      outcome: "session-started";
+      workspacePath: string;
+      sessionId: string;
+    }
+  | {
+      creationId: string;
+      outcome: "dismissed";
+      workspacePath: string;
+      promptText: string | null;
+    };
 
 export const MANAGED_WORKTREE_OUTPUT_LIMIT = 32 * 1024;
 

@@ -5,6 +5,7 @@ export interface SidePaneTabPresentationLabels {
   fileManagerTitle?: string;
   browserTitle: string;
   reviewTitle: string;
+  sourceControlTitle?: string;
   codeViewerTitle: string;
   treemappingTitle: string;
   whiteboardTitle: string;
@@ -74,6 +75,7 @@ export function getSidePaneTabSearchHint(tab: WorkspaceSidePaneTab): string {
     return `${tab.title ?? ""} ${tab.sessionId} browser use`;
   }
   if (tab.type === "new-tab") return "new tab launcher";
+  if (tab.type === "source-control") return "source control git commit stage";
   if (tab.type === "git") return "git diff";
   if (tab.type === "treemapping") return "file activity diff map treemapping";
   if (tab.type === "whiteboard") return `${tab.title} whiteboard canvas draw sketch`;
@@ -104,6 +106,7 @@ export function getLocalizedSidePaneTabTitle(
         "browser.title": labels.browserTitle,
         "browser.permission.settings": labels.browserPermissionsTitle,
         "sidePane.review": labels.reviewTitle,
+        "scm.title": labels.sourceControlTitle ?? "Source Control",
         "codeViewer.title": labels.codeViewerTitle,
         "treemapping.title": labels.treemappingTitle,
         "whiteboard.title": labels.whiteboardTitle,
@@ -149,6 +152,7 @@ export function getSidePaneTabTypeLabel(
   if (tab.type === "browser" || tab.type === "browser-use") return labels.browserTitle;
   if (tab.type === "browser-permissions") return labels.browserPermissionsTitle;
   if (tab.type === "file-manager") return labels.fileManagerTitle ?? labels.codeViewerTitle;
+  if (tab.type === "source-control") return labels.sourceControlTitle ?? "Source Control";
   if (tab.type === "git") return labels.reviewTitle;
   if (tab.type === "treemapping") return labels.treemappingTitle;
   if (tab.type === "whiteboard") return labels.whiteboardTitle;

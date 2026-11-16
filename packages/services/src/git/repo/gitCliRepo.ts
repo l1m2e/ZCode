@@ -1,5 +1,5 @@
 /* eslint-disable max-lines */
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { lstat, mkdtemp, readFile, rm, stat, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve, sep } from "node:path";
 import type {
@@ -604,6 +604,30 @@ export function createGitCliRepo(options?: { commandProvider?: GitCommandProvide
     repositoryResolutionRequests.delete(workspacePath);
     workspaceRepositoryInfoRequests.delete(workspacePath);
     statusRequests.delete(workspacePath);
+  }
+
+  async function resolveMutationPaths(resolution: GitResolvedRepository, paths: string[]) {
+    const selected = new Set(
+      await Promise.all(paths.map((path) => normalizeInputPath(resolution, path))),
+    );
+    const result = await runGitStatus(resolution);
+    ensureGitCommandSucceeded("git status before mutation", result);
+    if (result.outputTruncated) throw new Error("Cannot mutate paths with truncated Git status");
+    const entries = parseStatusPorcelain(result.stdout).entries;
+    const includesPath = (path: string) =>
+      [...selected].some(
+        (selection) => selection === "." || path === selection || path.startsWith(`${selection}/`),
+      );
+    // rename 的两端属于同一次操作；跨 workspace 时必须拒绝，不能偷偷修改范围外 index。
+    for (const entry of entries) {
+      if (entry.originalPath && (includesPath(entry.path) || includesPath(entry.originalPath))) {
+        for (const path of [entry.path, entry.originalPath]) {
+          await normalizeInputPath(resolution, resolve(resolution.repoRoot, path));
+          selected.add(path);
+        }
+      }
+    }
+    return { repoPaths: [...selected], entries };
   }
 
   async function validateBranchName(
@@ -1443,16 +1467,35 @@ export function createGitCliRepo(options?: { commandProvider?: GitCommandProvide
         await this.resolveRepository(workspacePath),
         "stage paths",
       );
-      const repoPaths = Array.from(
-        new Set(await Promise.all(paths.map((path) => normalizeInputPath(resolution, path)))),
-      );
+      const { repoPaths } = await resolveMutationPaths(resolution, paths);
       if (repoPaths.length === 0) {
         return;
       }
 
+      // 已暂存 rename 的旧路径已不在 index；直接 add 两端会报 pathspec 不存在。
+      // 由 Git 展开当前受跟踪/未跟踪文件，既包含未暂存删除，也跳过已经移除的旧路径。
+      const candidates = await commandProvider.run({
+        cwd: resolution.repoRoot,
+        args: [
+          "--literal-pathspecs",
+          "ls-files",
+          "--cached",
+          "--others",
+          "--exclude-standard",
+          "-z",
+          "--",
+          ...repoPaths,
+        ],
+        timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
+        maxOutputBytes: DEFAULT_GIT_OUTPUT_BYTES,
+      });
+      ensureGitCommandSucceeded("git ls-files stage paths", candidates);
+      if (candidates.outputTruncated) throw new Error("Cannot stage truncated file selection");
+      const stagePaths = [...new Set(candidates.stdout.split("\0").filter(Boolean))];
+      if (stagePaths.length === 0) return;
       const result = await commandProvider.run({
         cwd: resolution.repoRoot,
-        args: ["add", "--", ...repoPaths],
+        args: ["--literal-pathspecs", "add", "--", ...stagePaths],
         timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
       });
       ensureGitCommandSucceeded("git add", result);
@@ -1464,16 +1507,31 @@ export function createGitCliRepo(options?: { commandProvider?: GitCommandProvide
         await this.resolveRepository(workspacePath),
         "unstage paths",
       );
-      const repoPaths = Array.from(
-        new Set(await Promise.all(paths.map((path) => normalizeInputPath(resolution, path)))),
-      );
+      const { repoPaths } = await resolveMutationPaths(resolution, paths);
       if (repoPaths.length === 0) {
         return;
       }
 
+      // unborn 仓库没有 HEAD，移除 index 条目即可，工作树必须保留。
+      const head = await commandProvider.run({
+        cwd: resolution.repoRoot,
+        args: ["rev-parse", "--verify", "HEAD"],
+      });
       const result = await commandProvider.run({
         cwd: resolution.repoRoot,
-        args: ["restore", "--staged", "--", ...repoPaths],
+        args:
+          head.exitCode === 0
+            ? ["--literal-pathspecs", "restore", "--staged", "--", ...repoPaths]
+            : [
+                "--literal-pathspecs",
+                "rm",
+                "--cached",
+                "-r",
+                "--force",
+                "--ignore-unmatch",
+                "--",
+                ...repoPaths,
+              ],
         timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
       });
       ensureGitCommandSucceeded("git restore --staged", result);
@@ -1485,21 +1543,54 @@ export function createGitCliRepo(options?: { commandProvider?: GitCommandProvide
         await this.resolveRepository(workspacePath),
         "discard paths",
       );
-      const repoPaths = Array.from(
-        new Set(await Promise.all(paths.map((path) => normalizeInputPath(resolution, path)))),
+      const { repoPaths, entries } = await resolveMutationPaths(resolution, paths);
+      if (repoPaths.length === 0) return;
+      const untrackedPaths = repoPaths.filter((path) =>
+        entries.some((entry) => entry.path === path && entry.isUntracked),
       );
-      if (repoPaths.length === 0) {
-        return;
+      // 仅丢弃工作树时，已暂存 rename 的旧路径不在 index，不能交给 restore。
+      const trackedPaths = repoPaths.filter(
+        (path) =>
+          !untrackedPaths.includes(path) &&
+          (staged || !entries.some((entry) => entry.originalPath === path && entry.x === "R")),
+      );
+      // 删除仅接受已确认的单个未跟踪条目；不递归删除目录，也不跟随符号链接。
+      for (const path of untrackedPaths) {
+        const info = await lstat(resolve(resolution.repoRoot, path));
+        if (info.isDirectory())
+          throw new Error("Discard requires an explicit untracked file, not a directory");
       }
-
-      const result = await commandProvider.run({
-        cwd: resolution.repoRoot,
-        args: staged
-          ? ["restore", "--source=HEAD", "--staged", "--worktree", "--", ...repoPaths]
-          : ["restore", "--worktree", "--", ...repoPaths],
-        timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
-      });
-      ensureGitCommandSucceeded("git restore", result);
+      if (
+        trackedPaths.some(
+          (path) =>
+            entries.some((entry) => entry.isUntracked && entry.path.startsWith(`${path}/`)) ||
+            path === ".",
+        )
+      ) {
+        throw new Error("Discard requires explicit file paths");
+      }
+      if (trackedPaths.length > 0) {
+        const result = await commandProvider.run({
+          cwd: resolution.repoRoot,
+          args: staged
+            ? [
+                "--literal-pathspecs",
+                "restore",
+                "--source=HEAD",
+                "--staged",
+                "--worktree",
+                "--",
+                ...trackedPaths,
+              ]
+            : ["--literal-pathspecs", "restore", "--worktree", "--", ...trackedPaths],
+          timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
+        });
+        ensureGitCommandSucceeded("git restore", result);
+      }
+      for (const path of untrackedPaths) {
+        await normalizeInputPath(resolution, resolve(resolution.repoRoot, path));
+        await unlink(resolve(resolution.repoRoot, path));
+      }
       invalidate(workspacePath);
     },
 
@@ -1517,17 +1608,35 @@ export function createGitCliRepo(options?: { commandProvider?: GitCommandProvide
       if (trimmedMessage.length === 0) {
         throw new Error("Commit message cannot be empty");
       }
-      const repoPaths =
-        paths && paths.length > 0
-          ? Array.from(
-              new Set(await Promise.all(paths.map((path) => normalizeInputPath(resolution, path)))),
-            )
-          : [];
+      const scopedSelection = await resolveMutationPaths(resolution, paths?.length ? paths : ["."]);
+      const scopedIndex = options?.stagedOnly || !paths?.length;
+      // 无显式路径也必须限制在 cwd；从状态展开到文件，临时 index 的移除操作不支持目录 pathspec。
+      const repoPaths = scopedIndex
+        ? Array.from(
+            new Set(
+              scopedSelection.entries
+                .filter(
+                  (entry) =>
+                    !entry.isUntracked &&
+                    entry.x !== "." &&
+                    scopedSelection.repoPaths.some(
+                      (path) =>
+                        path === "." || entry.path === path || entry.path.startsWith(`${path}/`),
+                    ),
+                )
+                .flatMap((entry) =>
+                  entry.originalPath ? [entry.path, entry.originalPath] : [entry.path],
+                ),
+            ),
+          )
+        : scopedSelection.repoPaths;
+      if (scopedIndex && repoPaths.length === 0)
+        throw new Error("No staged changes in workspace scope");
 
-      if (options?.stagedOnly && repoPaths.length > 0) {
+      if (scopedIndex) {
         const scopedStatusResult = await commandProvider.run({
           cwd: resolution.repoRoot,
-          args: ["status", "--porcelain=v2", "-z", "--", ...repoPaths],
+          args: ["--literal-pathspecs", "status", "--porcelain=v2", "-z", "--", ...repoPaths],
           timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
           maxOutputBytes: DEFAULT_GIT_OUTPUT_BYTES,
         });
@@ -1544,7 +1653,7 @@ export function createGitCliRepo(options?: { commandProvider?: GitCommandProvide
         );
         const stagedEntriesResult = await commandProvider.run({
           cwd: resolution.repoRoot,
-          args: ["ls-files", "--stage", "-z", "--", ...repoPaths],
+          args: ["--literal-pathspecs", "ls-files", "--stage", "-z", "--", ...repoPaths],
           timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
           maxOutputBytes: DEFAULT_GIT_OUTPUT_BYTES,
         });
@@ -1621,7 +1730,7 @@ export function createGitCliRepo(options?: { commandProvider?: GitCommandProvide
           // 这里只把已提交的路径同步到新 HEAD，保留其它已暂存文件继续等待用户手动提交。
           const resetSelectedResult = await commandProvider.run({
             cwd: resolution.repoRoot,
-            args: ["reset", "--quiet", "HEAD", "--", ...cleanupRepoPaths],
+            args: ["--literal-pathspecs", "reset", "--quiet", "HEAD", "--", ...cleanupRepoPaths],
             timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
           });
           ensureGitCommandSucceeded("git reset selected committed paths", resetSelectedResult);
@@ -1636,7 +1745,7 @@ export function createGitCliRepo(options?: { commandProvider?: GitCommandProvide
         cwd: resolution.repoRoot,
         args:
           repoPaths.length > 0
-            ? ["commit", "-m", trimmedMessage, "--", ...repoPaths]
+            ? ["--literal-pathspecs", "commit", "-m", trimmedMessage, "--", ...repoPaths]
             : ["commit", "-m", trimmedMessage],
         timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
         maxOutputBytes: DEFAULT_GIT_OUTPUT_BYTES,
