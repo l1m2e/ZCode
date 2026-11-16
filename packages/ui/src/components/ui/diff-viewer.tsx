@@ -51,16 +51,19 @@ const DIFF_EDITOR_UNSAFE_CSS = [
 
 // editor 档的逐行变更标识：库的 gutter 色条按"连续同类行 run"合并成单个元素，
 // 无法区分同一段落里的修改行与纯新增行，因此隐藏后改在逐行的行号格上重绘。
-// 删除行不显示旧代码文本，原地折叠为细红条；盒子保留非零高度（不用 display:none），
-// 概览条测量、选区映射和已有注解仍能按行定位。
-const DIFF_EDITOR_COLLAPSED_LINE_HEIGHT_PX = 4;
+// 逐行保留 4px 会让大段删除累积空白；仅段首保留可供概览测量的薄标记。
+// 库把注解放在行后的独立兄弟节点；跨过它识别连续段，保留注解自身高度和版本锚点。
+const DIFF_EDITOR_DELETION = '[data-line-type="change-deletion"]';
+const DIFF_EDITOR_COLLAPSED_RUN_HEIGHT_PX = 4;
 const DIFF_EDITOR_MARKS_CSS = [
   // 隐藏 run 合并的库色条；annotation（评论锚点背景）与 metadata（\ No newline）不在其列。
   '[data-gutter-buffer="buffer"]{display:none}',
   '[data-line-type="change-deletion"][data-gutter-buffer]{display:none}',
-  // 删除行折叠：行号格与正文行都压到细条高度，文本不再可见。
-  `[data-line-type="change-deletion"]:is([data-line],[data-no-newline]){height:${DIFF_EDITOR_COLLAPSED_LINE_HEIGHT_PX}px;min-height:0;line-height:0;font-size:0;overflow:hidden;color:transparent;background:transparent}`,
-  `[data-line-type="change-deletion"][data-column-number]{height:${DIFF_EDITOR_COLLAPSED_LINE_HEIGHT_PX}px;min-height:0;line-height:0;font-size:0;overflow:hidden;color:transparent}`,
+  // 行号和正文同步压缩网格轨道；无末尾换行元数据不额外占位。
+  `${DIFF_EDITOR_DELETION}:is([data-line],[data-column-number]){height:${DIFF_EDITOR_COLLAPSED_RUN_HEIGHT_PX}px;min-height:0;line-height:0;font-size:0;overflow:hidden;color:transparent;background:transparent}`,
+  `${DIFF_EDITOR_DELETION}[data-no-newline]{height:0;min-height:0;line-height:0;font-size:0;overflow:hidden}`,
+  // 每行至多一个注解容器；正文与 gutter 分别跳过各自的注解节点，段内后续旧行归零。
+  `${DIFF_EDITOR_DELETION}[data-line] + ${DIFF_EDITOR_DELETION}[data-line],${DIFF_EDITOR_DELETION}[data-line] + [data-line-annotation] + ${DIFF_EDITOR_DELETION}[data-line],${DIFF_EDITOR_DELETION}[data-column-number] + ${DIFF_EDITOR_DELETION}[data-column-number],${DIFF_EDITOR_DELETION}[data-column-number] + [data-gutter-buffer="annotation"] + ${DIFF_EDITOR_DELETION}[data-column-number]{height:0}`,
   '[data-line-type="change-deletion"] [data-line-number-content]{display:none}',
   // 行号格左缘逐行色条：绿=新增、红=删除位置；修改行（蓝）由 editorModifiedLines 生成。
   "[data-column-number]{position:relative}",

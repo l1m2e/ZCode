@@ -399,6 +399,73 @@ describe("SP13：status panel Git Changes 打开变更审阅", () => {
       );
     } finally {
       await rm(join(DEFAULT_WORKSPACE, name), { force: true });
+  it("editor 的 276 行连续删除只占一个薄标记并保留新版评论和概览", async function () {
+    this.timeout(CASE_TIMEOUT_MS);
+    const name = "bulk-deletion-review.txt";
+    const relativePath = `.zcode-e2e/conversation-session-git-review-entry/${name}`;
+    const path = join(DEFAULT_WORKSPACE, relativePath);
+    const git = (...args: string[]) =>
+      execFileAsync(process.env.ZCODE_GIT_BINARY?.trim() || "git", [
+        "-C",
+        DEFAULT_WORKSPACE,
+        ...args,
+      ]);
+    const before = [
+      "current before",
+      ...Array.from({ length: 276 }, (_, i) => `removed ${i}`),
+      "current after",
+    ];
+    try {
+      await writeFile(path, `${before.join("\n")}\n`);
+      await git("add", "--", relativePath);
+      await writeFile(path, "current before\ncurrent after\n");
+      await waitForWorkspaceApp(DEFAULT_WORKSPACE, 45_000);
+      await selectV4TaskById(PROVIDER_READINESS_HISTORY_SESSION_ID);
+      if (!(await isGitPaneMounted())) {
+        await waitForExpandedStatusPanel();
+        await clickStatusPanelChanges();
+      }
+      await ensureWideReviewPane();
+      await clickGitReviewFileRow(name);
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const style = await browser.execute(
+          () => JSON.parse(localStorage.getItem("zcode-git-review-settings") ?? "{}").diffStyle,
+        );
+        if (style === "editor") break;
+        await $(`[data-testid="${TID_GIT_REVIEW_DIFF_STYLE_TOGGLE}"]`).click();
+      }
+      await browser.waitUntil(async () => (await readRenderedDiff()).unifiedLines.length === 278, {
+        timeout: 20_000,
+        timeoutMsg: "276 行删除 fixture 没有完整渲染",
+      });
+      const snapshot = await readRenderedDiff();
+      const deleted = snapshot.unifiedLines.filter((line) => line.type === "change-deletion");
+      expect(deleted).toHaveLength(276);
+      expect(deleted.map((line) => line.height)).toEqual([4, ...Array<number>(275).fill(0)]);
+      expect(deleted.map((line) => line.numberHeight)).toEqual([4, ...Array<number>(275).fill(0)]);
+      const current = snapshot.unifiedLines.filter((line) => line.type !== "change-deletion");
+      expect(current.map((line) => line.number)).toEqual([1, 2]);
+      expect(current.map((line) => line.text)).toEqual(["current before", "current after"]);
+      expect(current[1]!.top - current[0]!.top - current[0]!.height).toBeCloseTo(4, 1);
+      await assertDiffOverviewNavigation("deletions");
+      await observeCodeCommentEvents();
+      await selectDiffLines("additions", 2);
+      await assertInlineDraft("additions", 2, 2);
+      await submitCommentDraft();
+      await browser.waitUntil(async () => (await readObservedComments()).length === 1, {
+        timeout: 10_000,
+        timeoutMsg: "大段删除后的新版评论没有进入 composer",
+      });
+      expect((await readObservedComments())[0]).toMatchObject({
+        claimed: true,
+        side: "R",
+        startLine: 2,
+        endLine: 2,
+        selectedText: "current after",
+      });
+    } finally {
+      await git("rm", "--cached", "-f", "--", relativePath);
+      await rm(path, { force: true });
     }
   });
 
@@ -738,6 +805,7 @@ function readRenderedDiff() {
               type: line.getAttribute("data-line-type"),
               text: line.textContent?.replace(/\n$/u, "") ?? "",
               height: line.getBoundingClientRect().height,
+              numberHeight: numberCell?.getBoundingClientRect().height ?? 0,
               top: line.getBoundingClientRect().top,
               // editor 视觉合同需要对比增删行与上下文行的实际渲染背景。
               background: getComputedStyle(line).backgroundColor,
@@ -842,7 +910,10 @@ function assertFullDiff(snapshot: Awaited<ReturnType<typeof readRenderedDiff>>, 
       for (const line of [...additionLines, ...editorDeletionLines]) {
         expect(line.background).toBe(contextLine!.background);
       }
-      // 删除行折叠：盒子保留（概览条仍可测量）但高度远小于正常行，旧代码文本不可见。
+      // 连续删除总共只保留一个可供概览测量的 4px 标记。
+      expect(editorDeletionLines.map((line) => line.height)).toEqual([4, 0]);
+      expect(editorDeletionLines.map((line) => line.numberHeight)).toEqual([4, 0]);
+      // 删除行折叠：盒子保留但旧代码文本不可见。
       const normalHeight = Math.max(
         ...snapshot.unifiedLines
           .filter((line) => line.type !== "change-deletion")
@@ -892,38 +963,44 @@ function assertFullDiff(snapshot: Awaited<ReturnType<typeof readRenderedDiff>>, 
   expect(lines.at(-1)?.text).toBe("unchanged context 24");
 }
 
-async function assertDiffOverviewNavigation() {
+async function assertDiffOverviewNavigation(side: DiffSide = "additions") {
   const track = $(`[data-testid="${TID_GIT_PANE}"] [data-git-review-overview]`);
   await track.waitForDisplayed({ timeout: 10_000 });
   const readOverview = () =>
-    browser.execute((paneId) => {
-      const pane = document.querySelector(`[data-testid="${paneId}"]`);
-      const scroll = pane?.querySelector<HTMLElement>("[data-git-review-diff-scroll]");
-      const overview = pane?.querySelector<HTMLElement>("[data-git-review-overview]");
-      const marker = overview?.querySelector<HTMLElement>(
-        '[data-git-review-overview-change="additions"]',
-      );
-      const shadow = pane?.querySelector("diffs-container")?.shadowRoot;
-      const changed = shadow?.querySelector<HTMLElement>(
-        '[data-content] [data-line-type="change-addition"]',
-      );
-      const viewport = overview?.querySelector<HTMLElement>("[data-git-review-overview-viewport]");
-      if (!scroll || !overview || !marker || !changed || !viewport) return null;
-      const contentTop = scroll.getBoundingClientRect().top;
-      const changedTop = changed.getBoundingClientRect().top - contentTop + scroll.scrollTop;
-      const maxScroll = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
-      return {
-        scrollTop: scroll.scrollTop,
-        maxScroll,
-        target: Math.max(0, Math.min(maxScroll, changedTop - scroll.clientHeight / 2)),
-        markerTop: Number.parseFloat(marker.style.top),
-        expectedMarkerTop: (changedTop / scroll.scrollHeight) * 100,
-        viewportTop: Number.parseFloat(viewport.style.top),
-        expectedViewportTop: (scroll.scrollTop / scroll.scrollHeight) * 100,
-        deletions: overview.querySelectorAll('[data-git-review-overview-change="deletions"]')
-          .length,
-      };
-    }, TID_GIT_PANE);
+    browser.execute(
+      (paneId, targetSide) => {
+        const pane = document.querySelector(`[data-testid="${paneId}"]`);
+        const scroll = pane?.querySelector<HTMLElement>("[data-git-review-diff-scroll]");
+        const overview = pane?.querySelector<HTMLElement>("[data-git-review-overview]");
+        const marker = overview?.querySelector<HTMLElement>(
+          `[data-git-review-overview-change="${targetSide}"]`,
+        );
+        const shadow = pane?.querySelector("diffs-container")?.shadowRoot;
+        const changed = shadow?.querySelector<HTMLElement>(
+          `[data-content] [data-line][data-line-type="change-${targetSide === "additions" ? "addition" : "deletion"}"]`,
+        );
+        const viewport = overview?.querySelector<HTMLElement>(
+          "[data-git-review-overview-viewport]",
+        );
+        if (!scroll || !overview || !marker || !changed || !viewport) return null;
+        const contentTop = scroll.getBoundingClientRect().top;
+        const changedTop = changed.getBoundingClientRect().top - contentTop + scroll.scrollTop;
+        const maxScroll = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+        return {
+          scrollTop: scroll.scrollTop,
+          maxScroll,
+          target: Math.max(0, Math.min(maxScroll, changedTop - scroll.clientHeight / 2)),
+          markerTop: Number.parseFloat(marker.style.top),
+          expectedMarkerTop: (changedTop / scroll.scrollHeight) * 100,
+          viewportTop: Number.parseFloat(viewport.style.top),
+          expectedViewportTop: (scroll.scrollTop / scroll.scrollHeight) * 100,
+          deletions: overview.querySelectorAll('[data-git-review-overview-change="deletions"]')
+            .length,
+        };
+      },
+      TID_GIT_PANE,
+      side,
+    );
 
   await browser.waitUntil(async () => (await readOverview()) !== null, {
     timeout: 10_000,
@@ -932,7 +1009,7 @@ async function assertDiffOverviewNavigation() {
   const initial = (await readOverview())!;
   expect(initial.deletions).toBeGreaterThan(0);
   expect(initial.markerTop).toBeCloseTo(initial.expectedMarkerTop, 1);
-  await track.$('[data-git-review-overview-change="additions"]').click();
+  await track.$(`[data-git-review-overview-change="${side}"]`).click();
   await browser.waitUntil(
     async () => {
       const current = await readOverview();
