@@ -98,6 +98,8 @@ describe("会话区 status panel inline layout E2E", () => {
         expect(layout.contentTransitionDuration).toBe("0s");
         expect(Math.abs(layout.bottomGap - 16)).toBeLessThanOrEqual(1);
         expect(layout.dockBottomPadding).toBe("0px");
+        expect(layout.statsCenterError).not.toBeNull();
+        expect(Math.abs(layout.statsCenterError!)).toBeLessThanOrEqual(1);
         expect(layout.messageMask).toBe("none");
       }
     }
@@ -222,7 +224,15 @@ describe("会话区 status panel inline layout E2E", () => {
               const message = scroll.querySelector<HTMLElement>(
                 "[data-v4-timeline-message-layer]",
               )!;
+              const composer = dock.querySelector('[data-testid="v4-composer"]')!;
+              const stats = scroll.parentElement!.querySelector(
+                "[data-v4-bottom-strip-content] > div",
+              )!;
+              const inputRect = composer.getBoundingClientRect();
+              const statsRect = stats.getBoundingClientRect();
               return {
+                statsCenterError:
+                  statsRect.x + statsRect.width / 2 - inputRect.x - inputRect.width / 2,
                 left: rect.left,
                 right: rect.right,
                 viewport: innerWidth,
@@ -236,6 +246,7 @@ describe("会话区 status panel inline layout E2E", () => {
               };
             });
           expect(geometry.duration).toBe("0s");
+          expect(Math.abs(geometry.statsCenterError)).toBeLessThanOrEqual(1);
           expect(geometry.left).toBeGreaterThanOrEqual(0);
           expect(geometry.right).toBeLessThanOrEqual(geometry.viewport);
           expect(["none", "0px"]).toContain(geometry.translate);
@@ -259,7 +270,9 @@ async function expectCapsuleLayout(timeoutMsg: string) {
       current.panelState === "capsules" &&
       hasNormalColumnLayout(current) &&
       current.contentTransitionDuration === "0s" &&
-      current.dockTransitionDuration === "0s",
+      current.dockTransitionDuration === "0s" &&
+      current.statsCenterError !== null &&
+      Math.abs(current.statsCenterError) <= 1,
     timeoutMsg,
   );
   expect(snapshot.panelState).toBe("capsules");
@@ -320,6 +333,7 @@ interface ChatLayoutSnapshot {
   bottomGap: number;
   dockBottomPadding: string;
   messageMask: string;
+  statsCenterError: number | null;
 }
 
 function getChatLayoutSnapshot(): Promise<ChatLayoutSnapshot> {
@@ -338,8 +352,19 @@ function getChatLayoutSnapshot(): Promise<ChatLayoutSnapshot> {
     const dockRect = dock?.getBoundingClientRect();
     const contentParentRect = content?.parentElement?.getBoundingClientRect();
     const dockParentRect = dock?.parentElement?.getBoundingClientRect();
+    const composerRect = dock
+      ?.querySelector<HTMLElement>('[data-testid="v4-composer"]')
+      ?.getBoundingClientRect();
+    const statsRect = pane
+      ?.querySelector<HTMLElement>("[data-v4-bottom-strip-content] > div")
+      ?.getBoundingClientRect();
 
     return {
+      // 比较实际芯片行和输入框的几何中心，防止宽屏只移动 dock 后统计条仍居中于整页。
+      statsCenterError:
+        composerRect && statsRect && statsRect.width > 0
+          ? statsRect.x + statsRect.width / 2 - composerRect.x - composerRect.width / 2
+          : null,
       containerWidth: container?.getBoundingClientRect().width ?? 0,
       contentClassName: content?.className ?? null,
       contentTransitionProperty: contentStyle?.transitionProperty ?? "",

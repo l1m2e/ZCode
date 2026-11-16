@@ -9,6 +9,9 @@
 - 不能放回 composer dock 内：dock 在滚动视口内 sticky，v3.18.0 为防 mask 闪黑把底部留白（`pb-4`）移到视口外后，视口内元素的越界绘制会被原生 overflow 裁掉（曾用 `h-0 + overflow-visible` 被裁掉下半截）。
 - 插槽仅在 dock 存在且非居中空态 / 浮窗形态时渲染（与根节点底部留白条件一致）。timeline 把状态条 `absolute inset-x-0 bottom-0` 漂浮在根节点 16px 底部留白带上：**不参与 flex 流式布局**，视口几何与 scroll 边缘契约（`bottomGap=16px`，`conversation-session-v4-scroll` E2E 断言 ±1px）完全不变，输入框位置也不变；芯片行浮在输入框与窗口底沿之间的原留白带上，其顶部 8px 与滚动视口底沿轻微重叠（与旧版芯片行浮在滚动内容上的视觉一致）。
 
+- 统计条的水平中心线必须与输入框中心线一致，而不是时间线根节点的中心线。`ConversationTimeline` 是布局的唯一所有者：`bottomStrip` 内层复用 composer dock 的 `contentWidthClassName` 与 `summaryPanelInlineOffsetClassName`，随宽屏状态面板展开一起左移，收起或窄屏时一起恢复；不另设断点或固定偏移。
+- 布局验收沿用 `conversation-session-status-panel-inline-layout.test.ts`：宽屏自动/手动展开、手动收起、窄屏及重新放大均断言统计条与输入框中心线误差不超过 1px；深浅主题和手机 Web 历史会话打开/刷新也检查对齐，保留 `bottomGap=16px`、dock 底部 padding 为零和消息层无 mask 的断言。
+
 ## 公式
 
 ```text

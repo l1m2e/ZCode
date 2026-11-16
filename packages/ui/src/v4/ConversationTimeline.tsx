@@ -2235,7 +2235,17 @@ function ConversationTimelineImpl({
           // 用 absolute 漂浮在根节点 16px 底部留白带上：对 flex 布局零影响，
           // scroll 边缘契约（conversation-session-v4-scroll E2E）与视口几何完全不变。
           <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20">
-            {bottomStrip}
+            {/* 宽屏面板展开会让输入框左移；统计条复用同一宽度与偏移，避免仍按整页居中。 */}
+            <div
+              data-v4-bottom-strip-content="true"
+              className={cn(
+                "mx-auto w-full",
+                contentWidthClassName,
+                summaryPanelInlineOffsetClassName,
+              )}
+            >
+              {bottomStrip}
+            </div>
           </div>
         ) : null}
       </div>
