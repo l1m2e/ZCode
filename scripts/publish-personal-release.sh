@@ -1,8 +1,8 @@
 #!/bin/bash
 # CI 专用（.github/workflows/personal-build.yml 调用）：发布 GitHub Release。
 # 消费 sync-personal-mods.sh --record 写入的元数据（更新清单 + 构建历史），
-# 上传 zip/dmg + personal-update.json 发布清单；app 轮询
-# /releases/latest/download/personal-update.json 比对 buildId 点亮更新。
+# 上传 zip/dmg + personal-update.json 发布清单，供手动下载与校验。
+# 应用内更新不消费远程清单。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -47,7 +47,7 @@ if [ -n "${dmg_path:-}" ]; then
 fi
 
 # zipUrl 必须取 Release 资产的真实下载地址：CI 产物文件名的空格会被规范化
-# （如空格变点号），按本地文件名拼 URL 会对不上导致远程安装 404
+# （如空格变点号），按本地文件名拼 URL 会对不上导致下载链接 404
 sleep 3
 zip_url=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" --jq '[.assets[] | select(.name | endswith(".zip"))][0].browser_download_url')
 [ -n "$zip_url" ] || fail "未查询到 zip 资产下载地址"

@@ -5,7 +5,7 @@ name: personal build
 # - push：personal-mods 有新提交（对话驱动改动）时构建发布
 # - workflow_dispatch：手动触发
 # 产物 = GitHub Release（zip/dmg + personal-update.json 发布清单），
-# app 轮询 /releases/latest/download/personal-update.json 比对 buildId 点亮更新。
+# 供手动下载安装；应用内更新只消费本地已打包产物。
 
 on:
   schedule:
@@ -120,7 +120,7 @@ jobs:
         run: scripts/sync-personal-mods.sh --record
 
       # .personal-build-id 写入于 bundle 之后，dmg/zip 里天然没有它；补注进 zip
-      # （自动化安装走 zip），否则装出的 app 无法参与构建号比对与防回退
+      # 便于手动安装 zip 后参与本地构建号比对与防回退
       - name: Inject build id into zip
         if: steps.guard.outputs.skip != 'true'
         run: |
@@ -136,8 +136,7 @@ jobs:
 
   # Windows 安装包（NSIS x64，未签名）追加到 mac job 刚发布的同一个 Release。
   # needs 串行：mac job 负责 rebase + force-push + 发 Release，这里检出 rebase 后的
-  # 同一 HEAD 构建，保证两个平台产物同源。产物仅供手动下载安装——app 内绿点与
-  # --install-remote 自动更新是 macOS 专属（bash/ditto 安装器），不消费 win 资产。
+  # 同一 HEAD 构建，保证两个平台产物同源。CI 产物均供手动下载安装。
   windows:
     needs: build
     if: needs.build.outputs.skip != 'true'

@@ -9,19 +9,17 @@
 - 提交信息用中文：更新弹窗「个人修改」与 GitHub Release 说明直接取提交主题展示。
 - 历史残留分支 `feat/session-tokens-per-second`、`backup/session-tokens-per-second` 是旧版徽章的迭代备份，已被 personal-mods 取代，可随时删除。
 
-## 应用内「更新」按钮：自编译更新链路（2026-10-30 起；2026-11-05 改为远程唯一自动通道）
+## 应用内「更新」按钮：仅本地已打包构建
 
-不再用 launchd 定时任务。检查/安装由**运行中的 app** 驱动：
+不再用 launchd 定时任务。应用启动检查一次，并监听本地构建完成后原子发布的
+`~/.zcode/v2/personal-mods-update.json`。只有新的有效本地 build 才显示现有更新 tag；
+不访问 CI 发布清单，不下载远程更新，不自动拉起同步或构建。
 
-1. **远程通道（唯一自动更新源）**：`packages/desktop/src/main/personalSelfBuiltUpdate.ts`
-   每 60 秒轮询 CI 发布清单（见下方 CI 章节），buildId 比已安装新即点亮更新胶囊
-   （复用官方更新 UI：胶囊 → 更新日志弹窗 → 「立即重启更新」确认框）；点击确认走
-   `sync-personal-mods.sh --install-remote <zipUrl> <sha256>`。
-2. **本地构建源（仅手动构建）**：不做启动检查、不做周期轮询、不再拉起官方同步构建
-   （官方同步归 CI schedule 负责）。只有自己运行 `scripts/sync-personal-mods.sh` 构建完成、
-   写入更新清单 `~/.zcode/v2/personal-mods-update.json` 与构建 ID `$DIST/.personal-build-id`
-   时，manifest watch 立即点亮；点击确认走 `--install-only`（等待 app 退出 → ditto 替换 →
-   自动重启）。脚本**不安装**，源码没变时跳过校验与构建。
+运行 `scripts/sync-personal-mods.sh` 完成本地同步构建后，点现有更新按钮并确认，应用
+再次校验清单、build ID 与包文件，调用 `--install-only <buildId>` 等待应用退出，直接
+复制本地已打包文件到 `/Applications/ZCode Preview.app` 并重启。相同、较旧、缺失或
+不完整的 build 不提示也不安装；安装器在退出等待前后再次确认该 build ID。
+具体规则和验收见 [本地构建更新规格](docs/desktop/personal-local-build-update.md)。
 
 自编译标识：关于面板 applicationVersion 显示「（自编译 p<N>，p<N> 为个人构建序号）」；
 更新弹窗顶部说明「本包为自编译版本（personal-mods 分支）」。
@@ -29,7 +27,7 @@
 构建元数据（`write_build_metadata`，流水线构建路径与手动 `--record` 共用同一条写入路径）：
 - 构建 ID `<version>-p<N>-<UTC 时间戳>` 写入 dist app 内 `.personal-build-id`。N 以 fork 的
   `personal-*` tag 数为准（本地与 CI 共用计数器）；离线时退回历史文件行数，可能与 CI
-  撞号，因此 app 端序号相同时以 buildId 尾部 UTC 时间戳决胜（见 CI 章节第 4 条）。
+  撞号，因此 app 只以 buildId 尾部 UTC 时间戳判断新旧，p<N> 仅展示。已装无 ID 的旧包允许升级，有 ID 但无法解析时间时不自动提示。
 - 更新清单 `~/.zcode/v2/personal-mods-update.json` 额外带 `buildId`。
 - 历史文件 `personal-mods-builds.jsonl` 每次构建追加一条：官方基线（`git rev-parse main`）
   + 个人补丁栈主题（`git log main..HEAD --pretty=%s`，主题跨 rebase 稳定）。
@@ -41,7 +39,7 @@
 - 历史缺失（旧格式构建升级）退回时间戳 `git log` / 官方待装日志；都没有退回固定文案。
 - 手动 bundle 后运行 `scripts/sync-personal-mods.sh --record` 补写元数据（不 fetch/构建）。
 
-- `--install-only`：按钮专用安装模式（等待退出 → 替换 → 重启）。
+- `--install-only <buildId>`：按钮专用安装模式（复验 → 等待退出 → 再验 → 替换 → 重启）。
 - 工作区有未提交的**已跟踪文件**改动时脚本跳过本次（保护未提交工作）。
 
 手动同步的 rebase 冲突仍需人工解（脚本会自动中止并通知）；解完 `git rebase --continue`
@@ -63,13 +61,13 @@ fork 仓库（公开）+ `personal-mods` 设为默认分支后，`.github/workfl
 
 1. **触发**：schedule 15 分钟（守卫：官方没动且 HEAD 已发布则秒退）/ push personal-mods / 手动 dispatch。push 带 paths 过滤——只有 `packages/**` 等业务代码变更才构建，纯文档（`**/*.md`）与流水线（`.github/**`、`scripts/**`）改动不触发；schedule 不受 paths 影响。concurrency 串行化且不取消进行中的构建（`cancel-in-progress: false`，避免长构建被重叠触发掐死；排队的重复 run 由守卫秒退）。
 2. **流程**：rebase 到官方 main（CI 会 force-push 回远端分支，本地 pull --rebase 跟进）→ 校验 → macos-latest 构建 → `--record` 写元数据 → `publish-personal-release.sh` 发 Release；随后 windows job 对同一 HEAD 构建 NSIS x64 追加上传。
-3. **产物**：Release = zip/dmg + `personal-update.json`（version/buildId/zipUrl/sha256/officialBase/personal[]）+ Windows NSIS 安装包（x64，未签名，`windows` job 在 mac job 后对同一 HEAD 构建并追加上传；仅供手动下载安装，app 内绿点与 `--install-remote` 自动更新是 macOS 专属，不消费 win 资产）。构建序号 p<N> 以仓库 `personal-*` tag 数为准，本地与 CI 共用同一计数器。构建 ID 由 Record 步骤后补注进 zip（dmg 不含，手动装 dmg 的 app 无构建号，走一次远程自动更新即补齐）。
-4. **app 消费**：`personalSelfBuiltUpdate.ts` 的 `PERSONAL_UPDATE_MANIFEST_URL` 填入后，60 秒轮询 `releases/latest/download/personal-update.json`；防回退比对用「p<N> 序号（补零）+ 尾部 UTC 时间戳」排序键——序号更大即点亮，序号相同（本地历史行数计数与 CI tag 计数撞号）时时间戳必须严格更新才点亮；点更新走 `sync-personal-mods.sh --install-remote <zipUrl> <sha256>`（下载 → sha256 校验 → 剥 quarantine → 替换重启）。URL 留空 = 远程通道关闭，只剩手动构建的 watch 点亮。
+3. **产物**：Release 保留 zip/dmg + `personal-update.json`（version/buildId/zipUrl/sha256/officialBase/personal[]）以及 Windows NSIS x64 安装包，供别人手动下载安装。构建 ID 在 Record 后补注进 zip，dmg 不含构建 ID。
+4. **与应用隔离**：CI 发包保留，应用不消费远程清单；远程发布不会覆盖本地待装 build 或点亮更新 tag。
 5. **注意**：Actions 定时任务在仓库 60 天无活动后自动停用；CI rebase 冲突时 job 失败，按手动同步流程在本地解。
 
 ## 手动安装 CI 产物（浏览器下载）
 
-app 内更新按钮永远不遇到 Gatekeeper（安装器自动剥 quarantine）；只有浏览器直接下载会报「已损坏」，处理：
+浏览器下载的未签名 CI 包可能被 Gatekeeper 拦截；确认下载来源后，可手动处理：
 
 ```bash
 # dmg 拖进应用程序后启动报「已损坏」时
