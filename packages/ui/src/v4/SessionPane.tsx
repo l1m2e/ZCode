@@ -232,6 +232,7 @@ import { PendingCommandRecoveryBanner } from "@/v4/PendingCommandRecoveryBanner.
 import { AgentRuntimeExitBanner, useAgentRuntimeExitNotice } from "@/v4/AgentRuntimeExitBanner.js";
 import { ConversationStatusPanel } from "@/v4/ConversationStatusPanel.js";
 import { SessionSubscriptionErrorPanel } from "@/v4/SessionSubscriptionErrorPanel.js";
+import { SessionStatsBadges } from "@/v4/SessionStatsBadges.js";
 import { ConversationTimeline } from "@/v4/ConversationTimeline.js";
 import type { ConversationLatestTurnSummary } from "@/v4/conversationTimelineLiveTail.js";
 import { ConversationShareImportNotice } from "@/v4/ConversationShareImportNotice.js";
@@ -6470,6 +6471,15 @@ export function SessionPane({
         onConfirm={handleShareConfirm}
       />
     );
+  // dsh 风格统计芯片条：不再占用输入框正下方，改经 ConversationTimeline 的 bottomStrip
+  // 漂浮在 dock 底部 16px 留白带上（贴窗口底沿，absolute 不占流式布局）；数据与 composer 同源。
+  // pt-2 让文字落在输入框下沿之下：与输入框、与窗口底沿的视觉间隙大致对称。
+  const sessionStatsStrip =
+    !readOnly && !isFloatingPresentation && (sessionId || snapshot?.usage) ? (
+      <div className="pointer-events-auto flex h-6 w-full shrink-0 items-center justify-center gap-3 px-2 pt-2">
+        <SessionStatsBadges sessionId={sessionId} usage={snapshot?.usage ?? null} />
+      </div>
+    ) : null;
   // 目录失效仍禁止输入；将宿主已有原因放回原输入区，不在 pane 内探测或恢复目录。
   const conversationBottomDockContent = readOnly ? (
     readOnlyReason ? (
@@ -6858,6 +6868,7 @@ export function SessionPane({
                     onLoadAllOlder={state.editPresentation ? undefined : handleLoadAllOlder}
                     turnNavigatorDirectoryRevision={state.turnNavigatorDirectoryRevision}
                     bottomDock={conversationBottomDock}
+                    bottomStrip={sessionStatsStrip}
                     hideTurnNavigator={shareSelectionPanelVisible && !compactForRemoteControl}
                     backgroundScrollLocked={false}
                     headerSlot={

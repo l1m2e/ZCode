@@ -7,7 +7,11 @@ import { formatCompactTokenNumber } from "@/lib/tokenNumberFormat.js";
 import { useSessionStats } from "@/v4/sessionStatsStore.js";
 
 /**
- * dsh 风格的会话统计与 Token 用量状态芯片（composer 工具条，官方 context 圆环旁）。
+ * dsh 风格的会话统计与 Token 用量状态芯片。
+ *
+ * 挂载点由 SessionPane 组装成一条居中窄行，经 ConversationTimeline 的 `bottomStrip`
+ * 插槽渲染在滚动视口之外的窗格底沿（输入框下方、窗口底沿上方）；不能放回 composer
+ * dock 内——视口原生 overflow 会裁掉越界绘制，见 docs/chat/session-stats-chip-tps-caliber.md。
  *
  * - 芯片 1：`N 轮 M 步 · X tok/s`，悬浮展开「会话统计」面板（模型用时 / 工具调用用时 /
  *   首 token 平均 / 输出速度），数据来自 sessionStatsStore 的事实归账；
@@ -197,7 +201,7 @@ function TokenUsageChip({
   );
 }
 
-/** 官方 context 圆环旁的两枚 dsh 风格统计芯片；无数据时各自隐藏。 */
+/** 窗格底沿状态条里的两枚 dsh 风格统计芯片；无数据时各自隐藏。 */
 export const SessionStatsBadges = memo(function SessionStatsBadges({
   sessionId,
   usage,
