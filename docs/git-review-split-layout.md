@@ -14,6 +14,21 @@
 - 提交将 Code comment 附件添加到当前聚焦会话的输入草稿，**不自动发送会话消息**。只有 composer claim 事件后才关闭评论草稿；没有接收者时保留草稿并提示。
 - 单/双栏/编辑器视图三态与列表显隐为 Zustand 持有的本地展示偏好，localStorage key 为 `zcode-git-review-settings`；不广播到其他窗口。过滤条件在列表隐藏或窄屏切换期间保留。
 - 窄面板（实际宽度 <560px）使用列表/内容二选一，列表占满宽度，内容头有返回列表按钮。
+- 同一 workspace 的会话切换复用已保活的 GitPane 选择；有效时恢复上次文件，否则按当前数据集顺序展示第一项，空列表不显示旧 diff。刷新中的暂空不抹去上次选择。选择按 `workspaceIdentity?.trim() || workspacePath` 与来源隔离，不新增会话记忆或持久化副本。自动回退仅决定展示文件，不改变手机列表/内容导航；返回列表后刷新仍留在列表，只有点文件或显式查找导航进入内容。
+
+```mermaid
+sequenceDiagram
+    participant Shell as 既有侧栏（保活标签）
+    participant Pane as GitPane（选择意图与窄屏导航 owner）
+    participant Data as 当前 Git 数据集
+    Shell->>Pane: 会话 A → B → A，保留同一实例
+    Data->>Pane: identity + source + changes 更新
+    Pane->>Pane: 身份/来源变化先重置旧选择与导航
+    Pane->>Pane: 同作用域有效选择优先，否则第一项；空列表无内容
+    Note over Pane: 暂空不清除选择意图，不另建记忆
+    Pane->>Pane: 手机返回只将导航设为 list
+    Data->>Pane: 刷新/首项回退不触发 content 导航
+```
 
 ## 状态所有者与接口
 
@@ -120,6 +135,8 @@ sequenceDiagram
 ```
 
 ## 验收
+
+- 选择恢复回归：打开非空列表自动展示首项；选择第二项后切其他会话再返回仍展示第二项；所选路径移除回退首项，空列表不展示旧内容；同路径不同 workspaceIdentity 不继承选择。手机返回列表后，刷新与无效路径回退均保持列表。Desktop 入口维护会话切换和文件移除场景；临时 headless 浏览器可挂载真实 GitPane，以服务及子组件替身验证选择 owner 与导航状态，但不等同于完整 Desktop/手机远控 E2E。
 
 - 真实 Desktop E2E 检查 split 的 additions 几何位置在 deletions 左侧、远离 hunk 的首尾上下文可见；折行验收显式开启全局设置后检查长行宽度不溢出。本轮手测开关该设置，确认 split/unified、patch/plain-text 都在折行与横向滚动之间即时切换，概览位置同步，评论草稿不丢失；文件头与 diff 之间不再出现“新版 / 旧版”标签行。
 - 点击/拖动新版行号 → 末行下注解 → 可空评论提交 → 当前会话出现新版附件；旧版附件保留旧版文本与行号。没有接收者时草稿保留；跨版本选区不产生近似引用。
