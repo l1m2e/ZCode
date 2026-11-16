@@ -8,6 +8,7 @@ export type OpenTabLauncherItemId =
   | "selection-side-conversation"
   | "side-chat"
   | "files"
+  | "source-control"
   | "review"
   | "terminal"
   | "browser"
@@ -34,7 +35,7 @@ export function resolveOpenTabLauncherItemIds({
     itemIds.push("browser");
   }
 
-  itemIds.push("terminal");
+  itemIds.push("terminal", "source-control");
 
   if (!hasReviewTab) {
     itemIds.push("review");

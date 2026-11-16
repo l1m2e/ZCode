@@ -71,6 +71,7 @@ import {
   openCodeViewerSidePanes,
   markCodeViewerFocusRequestApplied,
   activateGitSidePane,
+  activateSourceControlSidePane,
   getActiveSidePaneTab,
   getVisibleSidePaneTabs,
   sidePaneOwnerKey,
@@ -1223,6 +1224,11 @@ export function useAppPanels(options: {
     });
   }, [isOfficeMode, commitOpenedSidePaneState, revealSidePaneForCurrentOwner, workspaceAbsPath]);
 
+  const handleOpenSourceControl = useCallback(() => {
+    revealSidePaneForCurrentOwner();
+    commitOpenedSidePaneState(activateSourceControlSidePane);
+  }, [commitOpenedSidePaneState, revealSidePaneForCurrentOwner]);
+
   const handleOpenGit = useCallback(() => {
     commitOpenedSidePaneState((current) => {
       if (isOfficeMode && !current?.tabs.some((tab) => tab.type === "git")) return current;
@@ -2168,6 +2174,7 @@ export function useAppPanels(options: {
     handleOpenTreemapping,
     handleOpenWhiteboard,
     handleOpenDeveloperTools,
+    handleOpenSourceControl,
     handleOpenExtensionView,
     handleOpenExtensionLogs,
     handleOpenPluginMarket,

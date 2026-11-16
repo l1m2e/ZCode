@@ -24,6 +24,9 @@ sequenceDiagram
     Shell->>Pane: 会话 A → B → A，保留同一实例
     Data->>Pane: identity + source + changes 更新
     Pane->>Pane: 身份/来源变化先重置旧选择与导航
+    Shell->>Pane: 可选 selectionRequest（来源、路径、requestId）
+    Pane->>Pane: 重置后应用匹配来源的显式请求，进入内容
+    Note over Pane: 首挂载及来源切换请求非首项不能被 reset 覆盖
     Pane->>Pane: 同作用域有效选择优先，否则第一项；空列表无内容
     Note over Pane: 暂空不清除选择意图，不另建记忆
     Pane->>Pane: 手机返回只将导航设为 list

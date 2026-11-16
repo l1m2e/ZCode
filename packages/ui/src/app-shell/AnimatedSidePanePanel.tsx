@@ -39,6 +39,7 @@ import { BrowserSitePermissionsPage } from "@/browser-use/BrowserSitePermissions
 import { findScreenshotSurfaceTabForRender } from "@/browser-use/useBrowserScreenshotSurfaceRequest.js";
 import { HumanBrowserView } from "@/browser-use/HumanBrowserView.js";
 import { ScopedErrorBoundary } from "@/ErrorBoundary.js";
+import { ProjectSourceControlPanel } from "@/GitPane/contract.js";
 import { GitPane } from "@/GitPane.js";
 import { TreemappingPane } from "@/TreemappingPane.js";
 import { WhiteboardPane } from "@/WhiteboardPane.js";
@@ -166,7 +167,10 @@ function SuspendedBrowserSidePaneContent({
     // info 级打点：挂起换壳会先卸载 <webview>，若卸载瞬间
     // CDP 仍 attached 即打开主进程 UAF 窗口；这条日志把换壳时刻与 UnifiedBrowserView 的
     // 卸载打点对齐，用于归因 guest destroyed 的销毁者。
-    logger.info("[browser-use] tab 换挂起壳，suspend ready ack", { generation, tabId });
+    logger.info("[browser-use] tab 换挂起壳，suspend ready ack", {
+      generation,
+      tabId,
+    });
     void platform.browserViewSuspendReady?.({ tabId, generation }).catch((error) => {
       logger.debug("[browser-use] suspend ready ack 失败", {
         error: error instanceof Error ? error.message : String(error),
@@ -327,6 +331,7 @@ export function AnimatedSidePanePanel({
   sidePaneOwnerId,
   gitState,
   activeGitSourceId,
+  onOpenSourceControl,
   panelRef,
   panelElementRef,
   browserNavigationRequest,
@@ -392,7 +397,11 @@ export function AnimatedSidePanePanel({
   onCloseSidePane?: () => void;
   toggleSidePaneShortcutLabel?: string;
   /** 桌面端「进入 / 退出完整视图」按钮；缺省不渲染（Web、手机远控）。 */
-  fullViewToggle?: { active: boolean; onToggle: () => void; shortcutLabel?: string };
+  fullViewToggle?: {
+    active: boolean;
+    onToggle: () => void;
+    shortcutLabel?: string;
+  };
   /** 完整视图生效时的 tab 栏状态（spec：docs/ui/side-pane-full-view.md）。 */
   fullView?: {
     surface: SidePaneFullViewSurface;
@@ -420,6 +429,7 @@ export function AnimatedSidePanePanel({
   sidePaneOwnerId: string | null;
   gitState: ReturnType<typeof import("@/hooks/useGitRepository.js").useGitRepository>;
   activeGitSourceId: GitChangeSourceId;
+  onOpenSourceControl: () => void;
   panelRef: RefObject<PanelImperativeHandle | null>;
   panelElementRef: RefObject<HTMLDivElement | null>;
   browserNavigationRequest: BrowserNavigationRequest | null;
@@ -565,7 +575,10 @@ export function AnimatedSidePanePanel({
     mobileOverlay,
   });
   // 独立侧边会话不要求 activeTaskId（草稿态主区也可发起）；只受移动端形态门禁。
-  const canOpenSideChat = shouldOfferSideChat({ isMobileTextInputViewport, mobileOverlay });
+  const canOpenSideChat = shouldOfferSideChat({
+    isMobileTextInputViewport,
+    mobileOverlay,
+  });
   // Sites 面板是会话级 UI 插件，和辅助对话同样需要正式会话；远端工作区不支持插件面板。
   const canOpenSites =
     canOpenSelectionSideConversation &&
@@ -770,7 +783,9 @@ export function AnimatedSidePanePanel({
     "selection-side-conversation": {
       id: "selection-side-conversation",
       label: intl.formatMessage({ id: "sidePane.selectionChat" }),
-      description: intl.formatMessage({ id: "sidePane.launcher.selection-side-conversation" }),
+      description: intl.formatMessage({
+        id: "sidePane.launcher.selection-side-conversation",
+      }),
       icon: MessageSquareTextIcon,
       onOpen: onOpenSelectionSideConversation,
     },
@@ -787,6 +802,13 @@ export function AnimatedSidePanePanel({
       description: intl.formatMessage({ id: "fileManager.empty" }),
       icon: FolderOpenIcon,
       onOpen: () => onOpenFileManager(),
+    },
+    "source-control": {
+      id: "source-control",
+      label: intl.formatMessage({ id: "scm.title" }),
+      description: intl.formatMessage({ id: "scm.launcherDescription" }),
+      icon: FileDiffIcon,
+      onOpen: onOpenSourceControl,
     },
     review: {
       id: "review",
@@ -812,7 +834,9 @@ export function AnimatedSidePanePanel({
     "developer-tools": {
       id: "developer-tools",
       label: intl.formatMessage({ id: "developerTools.title" }),
-      description: intl.formatMessage({ id: "sidePane.launcher.developer-tools" }),
+      description: intl.formatMessage({
+        id: "sidePane.launcher.developer-tools",
+      }),
       icon: BugIcon,
       onOpen: onOpenDeveloperTools,
     },
@@ -872,7 +896,9 @@ export function AnimatedSidePanePanel({
               <section className="min-w-0" data-testid="side-pane-ui-recommendations">
                 <div className="flex flex-wrap items-center justify-between gap-2 pb-2">
                   <h2 className="pl-2 text-ui-lg font-semibold text-foreground">
-                    {intl.formatMessage({ id: "settings.plugins.store.ui.title" })}
+                    {intl.formatMessage({
+                      id: "settings.plugins.store.ui.title",
+                    })}
                   </h2>
                   <Button
                     type="button"
@@ -890,7 +916,9 @@ export function AnimatedSidePanePanel({
                       onOpenPluginMarket();
                     }}
                   >
-                    {intl.formatMessage({ id: "sidePane.launcher.viewAllPlugins" })}
+                    {intl.formatMessage({
+                      id: "sidePane.launcher.viewAllPlugins",
+                    })}
                     <ChevronRightIcon className="size-3.5" aria-hidden="true" />
                   </Button>
                 </div>
@@ -936,6 +964,7 @@ export function AnimatedSidePanePanel({
         closeTab: (title) => intl.formatMessage({ id: "sidePane.closeTab" }, { title }),
         relativeTime: (timestamp) => formatTaskRelativeTime(timestamp, intl),
         browserTitle: intl.formatMessage({ id: "browser.title" }),
+        sourceControlTitle: intl.formatMessage({ id: "scm.title" }),
         reviewTitle: intl.formatMessage({ id: "sidePane.review" }),
         fileManagerTitle: intl.formatMessage({ id: "fileManager.title" }),
         codeViewerTitle: intl.formatMessage({ id: "codeViewer.title" }),
@@ -945,7 +974,9 @@ export function AnimatedSidePanePanel({
           id: "modelTrajectory.title",
         }),
         newTabTitle: intl.formatMessage({ id: "sidePane.newTab" }),
-        pluginMarketTitle: intl.formatMessage({ id: "workspace.openPluginsSettings" }),
+        pluginMarketTitle: intl.formatMessage({
+          id: "workspace.openPluginsSettings",
+        }),
         developerToolsTitle: intl.formatMessage({
           id: "developerTools.title",
         }),
@@ -963,10 +994,18 @@ export function AnimatedSidePanePanel({
         }),
         planTitle: intl.formatMessage({ id: "planTool.panel.planTab" }),
         workflowRunTitle: intl.formatMessage({ id: "sidePane.workflowRun" }),
-        workflowDirectoryTitle: intl.formatMessage({ id: "sidePane.workflowDirectory" }),
-        workflowActorTitle: intl.formatMessage({ id: "sidePane.workflowActor" }),
-        workflowScriptTitle: intl.formatMessage({ id: "sidePane.workflowScript" }),
-        workflowArtifactTitle: intl.formatMessage({ id: "sidePane.workflowArtifact" }),
+        workflowDirectoryTitle: intl.formatMessage({
+          id: "sidePane.workflowDirectory",
+        }),
+        workflowActorTitle: intl.formatMessage({
+          id: "sidePane.workflowActor",
+        }),
+        workflowScriptTitle: intl.formatMessage({
+          id: "sidePane.workflowScript",
+        }),
+        workflowArtifactTitle: intl.formatMessage({
+          id: "sidePane.workflowArtifact",
+        }),
         locale,
       }}
       onActivateTab={activateSidePaneTab}
@@ -1377,6 +1416,25 @@ export function AnimatedSidePanePanel({
                               isSidePaneVisible: isVisible,
                               visibleInlineSizePx: sidePaneVisibleInlineSizePx,
                             })}
+                          />
+                        ) : tab.type === "source-control" ? (
+                          <ProjectSourceControlPanel
+                            key={JSON.stringify([
+                              workspaceIdentity?.trim() || workspaceAbsPath,
+                              taskCwd ?? workspaceAbsPath,
+                              activeTaskId,
+                              draftProjectId,
+                            ])}
+                            projectWorkspacePath={workspaceAbsPath}
+                            activeTaskId={activeTaskId}
+                            draftProjectId={draftProjectId}
+                            workspacePath={taskCwd ?? workspaceAbsPath}
+                            workspaceIdentity={workspaceIdentity}
+                            gitState={gitState}
+                            onRefresh={onRefreshGit}
+                            onOpenCodeViewer={onOpenCodeViewer}
+                            isDesktop={isDesktop}
+                            workspaceRemoteSessionId={workspaceRemoteSessionId}
                           />
                         ) : tab.type === "git" ? (
                           <GitPane

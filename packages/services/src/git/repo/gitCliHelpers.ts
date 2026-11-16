@@ -1,5 +1,5 @@
 /* eslint-disable max-lines */
-import { access, open, readFile, realpath, stat } from "node:fs/promises";
+import { access, lstat, open, readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import type {
   GitBranchMutationIssue,
@@ -232,7 +232,10 @@ function inferKindFromStatusCode(statusCode: string): GitChangeKind {
   return "modified";
 }
 
-function parseBranchAheadBehind(value: string): { ahead: number; behind: number } {
+function parseBranchAheadBehind(value: string): {
+  ahead: number;
+  behind: number;
+} {
   const aheadMatch = value.match(/\+(\d+)/);
   const behindMatch = value.match(/-(\d+)/);
   return {
@@ -355,7 +358,14 @@ export function parseStatusPorcelain(stdout: string): {
     });
   }
 
-  return { branchName, trackingBranchName, headRefType, ahead, behind, entries };
+  return {
+    branchName,
+    trackingBranchName,
+    headRefType,
+    ahead,
+    behind,
+    entries,
+  };
 }
 
 function parseNumstatValue(value: string): number {
@@ -478,7 +488,9 @@ export async function buildUntrackedStats(
   };
   await Promise.all(
     Array.from(
-      { length: Math.min(GIT_UNTRACKED_STAT_CONCURRENCY, untrackedEntries.length) },
+      {
+        length: Math.min(GIT_UNTRACKED_STAT_CONCURRENCY, untrackedEntries.length),
+      },
       worker,
     ),
   );
@@ -684,21 +696,37 @@ export async function normalizeInputPath(
   resolution: GitResolvedRepository,
   path: string,
 ): Promise<string> {
-  const rawAbsolutePath = isAbsolute(path)
-    ? path
-    : resolve(resolution.workspacePath, path.split("/").join(sep));
-  const absolutePath = await realpath(rawAbsolutePath).catch(() => rawAbsolutePath);
+  const workspaceRoot = await realpath(resolution.workspacePath);
+  const absolutePath = resolve(isAbsolute(path) ? path : resolve(workspaceRoot, path));
+  const workspaceRelativePath = relative(workspaceRoot, absolutePath);
+  if (
+    workspaceRelativePath === ".." ||
+    workspaceRelativePath.startsWith(`..${sep}`) ||
+    isAbsolute(workspaceRelativePath)
+  ) {
+    throw new Error(`Path is outside workspace scope: ${path}`);
+  }
+  // 不对最终文件 realpath：符号链接本身才是 Git 条目。父目录链接必须拒绝，
+  // 否则缺失叶节点的 realpath fallback 会绕过边界，丢弃时还可能删除链接目标。
+  const components = workspaceRelativePath.split(sep).filter(Boolean);
+  let parent = workspaceRoot;
+  for (const component of components.slice(0, -1)) {
+    parent = resolve(parent, component);
+    const info = await lstat(parent).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    });
+    if (info?.isSymbolicLink()) throw new Error(`Path traverses a symbolic link: ${path}`);
+  }
   const repoRelativePath = normalizeGitPath(relative(resolution.repoRoot, absolutePath));
   if (
-    repoRelativePath.length === 0 ||
-    repoRelativePath === "." ||
     repoRelativePath === ".." ||
-    repoRelativePath.startsWith("../")
+    repoRelativePath.startsWith("../") ||
+    isAbsolute(repoRelativePath)
   ) {
     throw new Error(`Path is outside repository scope: ${path}`);
   }
-
-  return repoRelativePath;
+  return repoRelativePath || ".";
 }
 
 export function ensureRepositoryAvailable(

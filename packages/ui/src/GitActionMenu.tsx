@@ -45,6 +45,7 @@ import {
   filterCommitPreviewFilesByCurrentSession,
   getCurrentSessionFilePaths,
 } from "@/git-action-menu/currentSessionFileScope.js";
+import { useGitActions } from "@/hooks/useGitActions.js";
 import { useServices } from "@/hooks/useServices.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { getErrorMessage } from "@/lib/errorMessage.js";
@@ -831,6 +832,11 @@ export function GitActionMenu({
   triggerLayout = "header",
 }: GitActionMenuProps) {
   const { gitService } = useServices();
+  const { run: runGitMutation, pending: gitMutationPending } = useGitActions({
+    workspacePath,
+    workspaceIdentity,
+    onRefresh: onRefreshGit,
+  });
   const { intl, locale } = useZCodeIntl();
   const [commitDialogOpen, setCommitDialogOpen] = useState(false);
   const [commitDialogLoading, setCommitDialogLoading] = useState(false);
@@ -856,7 +862,8 @@ export function GitActionMenu({
   );
   const commitEnabled = gitSummary.isDirty;
   const pushEnabled = canPushGitBranch(gitSummary);
-  const triggerPending = mutationPending || commitMessageGenerationPending || commitDialogLoading;
+  const triggerPending =
+    gitMutationPending || mutationPending || commitMessageGenerationPending || commitDialogLoading;
   const primaryActionId = useMemo(
     () =>
       resolveGitActionMenuPrimaryAction({
@@ -1169,23 +1176,19 @@ export function GitActionMenu({
           includeUnstaged,
           pushAfterCommit: Boolean(options?.pushAfterCommit),
         });
-        if (pathsToStage.length > 0) {
-          await gitService.stagePaths({
+        await runGitMutation(async () => {
+          if (pathsToStage.length > 0) {
+            await gitService.stagePaths({ workspacePath, paths: pathsToStage });
+          }
+          await gitService.commit({
             workspacePath,
-            paths: pathsToStage,
+            message: nextCommitMessage,
+            paths: stagePaths,
+            stagedOnly: true,
           });
-        }
-        await gitService.commit({
-          workspacePath,
-          message: nextCommitMessage,
-          paths: stagePaths,
-          stagedOnly: !includeUnstaged,
+          committed = true;
+          if (options?.pushAfterCommit) await pushCurrentBranch({ showToast: false });
         });
-        committed = true;
-
-        if (options?.pushAfterCommit) {
-          await pushCurrentBranch({ showToast: false });
-        }
 
         logger.info("[GitActionMenu] 提交当前更改成功", {
           workspacePath,
@@ -1238,6 +1241,7 @@ export function GitActionMenu({
       intl,
       onRefreshGit,
       pushCurrentBranch,
+      runGitMutation,
       workspacePath,
     ],
   );
@@ -1259,7 +1263,7 @@ export function GitActionMenu({
     setPushError(null);
 
     try {
-      await pushCurrentBranch();
+      await runGitMutation(() => pushCurrentBranch());
       closePushDialog();
       onRefreshGit();
     } catch (error: unknown) {
@@ -1277,7 +1281,15 @@ export function GitActionMenu({
     } finally {
       setMutationPending(false);
     }
-  }, [closePushDialog, intl, onRefreshGit, pushCurrentBranch, pushEnabled, workspacePath]);
+  }, [
+    closePushDialog,
+    intl,
+    onRefreshGit,
+    pushCurrentBranch,
+    pushEnabled,
+    runGitMutation,
+    workspacePath,
+  ]);
 
   const handlePrimaryAction = useCallback(() => {
     if (primaryActionDisabled) {

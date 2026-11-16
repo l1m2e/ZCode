@@ -84,7 +84,31 @@ const enUS: Record<string, string> = {
   "chat.capsule.goal.verifying": "Verifying",
   "chat.capsule.goal.paused": "Paused",
   "chat.capsule.goal.notSatisfied": "Not achieved",
-
+  "scm.launcherDescription": "Stage, commit and push workspace changes",
+  "scm.commitActions": "Commit Actions",
+  "scm.openFile": "Open File",
+  "scm.selectRepository": "Select project directory / repository",
+  "scm.title": "Source Control",
+  "scm.staged": "Staged Changes",
+  "scm.changes": "Changes",
+  "scm.conflicts": "Merge Changes",
+  "scm.stage": "Stage Changes",
+  "scm.unstage": "Unstage Changes",
+  "scm.stageAll": "Stage All Changes",
+  "scm.unstageAll": "Unstage All Changes",
+  "scm.discard": "Discard Changes",
+  "scm.discardAll": "Discard All Changes",
+  "scm.fileActions": "File Actions",
+  "scm.refresh": "Refresh",
+  "scm.conflictWarning": "Resolve conflicts before committing.",
+  "scm.stageAndCommit": "Stage and Commit",
+  "scm.confirmStage":
+    "No changes are staged. Stage and commit these files in the current workspace?",
+  "scm.confirmDiscard":
+    "Discard changes to the following files? Untracked files will be permanently deleted. This cannot be undone.",
+  "scm.confirmDiscardStaged":
+    "Discard staged and working tree changes to the following files? This cannot be undone.",
+  "scm.confirm": "Confirm",
   "plugin.discovery.installAndEnable": "Install and enable in this workspace",
   "plugin.discovery.enableInWorkspace": "Enable in this workspace",
   "plugin.discovery.workspaceInstall":

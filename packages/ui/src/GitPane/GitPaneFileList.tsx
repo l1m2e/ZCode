@@ -1,6 +1,14 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { CopyIcon, FolderOpenIcon, ListTreeIcon, Search, X } from "lucide-react";
+import {
+  ChevronRight,
+  FileSymlink,
+  CopyIcon,
+  FolderOpenIcon,
+  ListTreeIcon,
+  Search,
+  X,
+} from "lucide-react";
 import { TID_GIT_REVIEW_FILE_FILTER, TID_GIT_REVIEW_FILE_LIST } from "@zcode/shared/test-ids";
 import { FileDisplayInline } from "@/lib/fileDisplay.js";
 import { cn } from "@/components/lib/utils.js";
@@ -22,13 +30,33 @@ const GIT_REVIEW_FILE_ROW_HEIGHT_PX = 32;
 const GIT_REVIEW_FILE_ROW_OVERSCAN = 12;
 
 /** 未跟踪状态优先于 added，文件名配色与文件树保持一致。 */
-function getChangeFileGitStatus(change: GitPaneFileChange): WorkspaceFileGitStatus {
-  return change.isUntracked ? "untracked" : change.kind;
+function getChangeFileGitStatus(
+  change: GitPaneFileChange,
+  sourceControl = false,
+): WorkspaceFileGitStatus {
+  if (change.isUntracked) return "untracked";
+  // AM 等双侧状态的 kind 优先 index；SCM 必须按当前来源选择 x/y，避免未暂存误标 A。
+  const code = sourceControl ? (change.isStaged ? change.x : change.y) : undefined;
+  return code === "M"
+    ? "modified"
+    : code === "A"
+      ? "added"
+      : code === "D"
+        ? "deleted"
+        : code === "R"
+          ? "renamed"
+          : change.kind;
 }
 
 export interface GitPaneFileListProps {
   changes: readonly GitPaneFileChange[];
   selectedPath: string | null;
+  selectedSection?: string;
+  renderGroupHeader?: (section: string, changes: readonly GitPaneFileChange[]) => ReactNode;
+  renderActions?: (change: GitPaneFileChange) => ReactNode;
+  collapsedSections?: ReadonlySet<string>;
+  onToggleSection?: (section: string) => void;
+  onOpenFile?: (change: GitPaneFileChange) => void;
   filterQuery: string;
   onFilterQueryChange: (query: string) => void;
   /** 外部（文件变更查找）请求把某个路径滚动到可视区；requestId 变化触发一次。 */
@@ -50,6 +78,12 @@ export interface GitPaneFileListProps {
 export function GitPaneFileList({
   changes,
   selectedPath,
+  selectedSection,
+  renderGroupHeader,
+  renderActions,
+  collapsedSections,
+  onToggleSection,
+  onOpenFile,
   filterQuery,
   onFilterQueryChange,
   revealRequest,
@@ -75,11 +109,33 @@ export function GitPaneFileList({
     );
   }, [changes, normalizedFilterQuery]);
 
+  const rows = useMemo(() => {
+    const result: Array<
+      { change: GitPaneFileChange } | { section: string; changes: GitPaneFileChange[] }
+    > = [];
+    for (const change of filteredChanges) {
+      if (
+        renderGroupHeader &&
+        !result.some((row) => "section" in row && row.section === change.section)
+      ) {
+        result.push({
+          section: change.section,
+          changes: filteredChanges.filter((file) => file.section === change.section),
+        });
+      }
+      if (!collapsedSections?.has(change.section)) result.push({ change });
+    }
+    return result;
+  }, [filteredChanges, renderGroupHeader, collapsedSections]);
   const rowVirtualizer = useVirtualizer({
-    count: filteredChanges.length,
+    count: rows.length,
     getItemKey: (index) => {
-      const change = filteredChanges[index];
-      return change ? change.path : String(index);
+      const row = rows[index];
+      return row
+        ? "change" in row
+          ? `${row.change.section}:${row.change.path}`
+          : row.section
+        : String(index);
     },
     getScrollElement: () => scrollRef.current,
     estimateSize: () => GIT_REVIEW_FILE_ROW_HEIGHT_PX,
@@ -91,15 +147,17 @@ export function GitPaneFileList({
       return;
     }
 
-    const index = filteredChanges.findIndex((change) => change.path === revealRequest.path);
+    const index = rows.findIndex(
+      (row) => "change" in row && row.change.path === revealRequest.path,
+    );
     if (index >= 0) {
       rowVirtualizer.scrollToIndex(index, { align: "center" });
     }
     // 依赖 revealRequest.requestId 保证同一目标再次请求时仍会滚动。
-  }, [revealRequest, filteredChanges, rowVirtualizer]);
+  }, [revealRequest, rows, rowVirtualizer]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="shrink-0 px-2 pb-2 pt-1">
         <div className="relative min-w-0">
           <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-foreground-subtlest" />
@@ -109,8 +167,12 @@ export function GitPaneFileList({
             data-testid={TID_GIT_REVIEW_FILE_FILTER}
             value={filterQuery}
             className="h-7 bg-transparent pl-7 pr-7 focus-visible:bg-input-focused"
-            placeholder={intl.formatMessage({ id: "git.review.filterPlaceholder" })}
-            aria-label={intl.formatMessage({ id: "git.review.filterPlaceholder" })}
+            placeholder={intl.formatMessage({
+              id: "git.review.filterPlaceholder",
+            })}
+            aria-label={intl.formatMessage({
+              id: "git.review.filterPlaceholder",
+            })}
             onChange={(event) => onFilterQueryChange(event.currentTarget.value)}
           />
           {filterQuery.length > 0 ? (
@@ -136,20 +198,57 @@ export function GitPaneFileList({
         {filteredChanges.length > 0 ? (
           <div className="relative w-full" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
             {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-              const change = filteredChanges[virtualRow.index];
-              if (!change) {
+              const row = rows[virtualRow.index];
+              if (!row) {
                 return null;
               }
 
-              const isSelected = selectedPath === change.path;
-              const fileGitStatus = getChangeFileGitStatus(change);
+              if ("section" in row)
+                return (
+                  <div
+                    key={virtualRow.key}
+                    className="absolute left-0 w-full"
+                    style={{
+                      top: virtualRow.start,
+                      height: GIT_REVIEW_FILE_ROW_HEIGHT_PX,
+                    }}
+                  >
+                    <div className="relative">
+                      <button
+                        type="button"
+                        className="absolute inset-y-0 left-0 z-10 w-6"
+                        aria-expanded={!collapsedSections?.has(row.section)}
+                        aria-label={row.section}
+                        onClick={() => onToggleSection?.(row.section)}
+                      >
+                        <ChevronRight
+                          className={cn(
+                            "size-3.5",
+                            !collapsedSections?.has(row.section) && "rotate-90",
+                          )}
+                        />
+                      </button>
+                      <div className="pl-5">{renderGroupHeader?.(row.section, row.changes)}</div>
+                    </div>
+                  </div>
+                );
+              const change = row.change;
+              const isSelected =
+                selectedPath === change.path &&
+                (!selectedSection || selectedSection === change.section);
+              const fileGitStatus = getChangeFileGitStatus(change, Boolean(renderActions));
               return (
                 <div
                   key={virtualRow.key}
                   ref={rowVirtualizer.measureElement}
-                  className="absolute left-0 w-full"
+                  // 选中背景必须由整行绘制，操作和状态列才会与文件名连续。
+                  className={cn(
+                    "group absolute left-0 flex w-full items-center hover:bg-surface-hover",
+                    isSelected && "bg-surface-hover",
+                  )}
                   data-index={virtualRow.index}
                   data-git-review-file-row={change.path}
+                  data-git-review-file-section={change.section}
                   style={{
                     top: `${virtualRow.start}px`,
                     height: `${GIT_REVIEW_FILE_ROW_HEIGHT_PX}px`,
@@ -160,8 +259,10 @@ export function GitPaneFileList({
                       <button
                         type="button"
                         className={cn(
-                          "grid h-full w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3 text-left transition-colors hover:bg-surface-hover",
-                          isSelected && "bg-surface-hover",
+                          "grid h-full min-w-0 flex-1 items-center gap-2 px-3 text-left transition-colors",
+                          renderActions
+                            ? "grid-cols-[minmax(0,max-content)_minmax(0,1fr)]"
+                            : "grid-cols-[minmax(0,1fr)_auto]",
                         )}
                         title={change.workspaceRelativePath}
                         aria-pressed={isSelected}
@@ -175,15 +276,31 @@ export function GitPaneFileList({
                             className: "flex min-w-0 items-center gap-2 overflow-hidden",
                             fileNameClassName: cn(
                               "min-w-0 truncate text-ui-base",
-                              getWorkspaceFileGitStatusTextClassName(fileGitStatus) ??
-                                "text-foreground",
+                              renderActions
+                                ? "text-foreground"
+                                : (getWorkspaceFileGitStatusTextClassName(fileGitStatus) ??
+                                    "text-foreground"),
                             ),
                           }}
                         />
-                        <span className="whitespace-nowrap text-right text-ui-xs tabular-nums">
-                          <span className="text-diff-added">+{change.added}</span>
-                          <span className="ml-1 text-diff-removed">-{change.removed}</span>
-                        </span>
+                        {renderActions ? (
+                          <span
+                            data-scm-directory
+                            className="min-w-0 truncate text-ui-sm text-foreground-subtle"
+                          >
+                            {change.workspaceRelativePath.includes("/")
+                              ? change.workspaceRelativePath.slice(
+                                  0,
+                                  change.workspaceRelativePath.lastIndexOf("/"),
+                                )
+                              : ""}
+                          </span>
+                        ) : (
+                          <span className="whitespace-nowrap text-right text-ui-xs tabular-nums">
+                            <span className="text-diff-added">+{change.added}</span>
+                            <span className="ml-1 text-diff-removed">-{change.removed}</span>
+                          </span>
+                        )}
                       </button>
                     </ContextMenuTrigger>
                     <ContextMenuContent className="w-56">
@@ -212,6 +329,50 @@ export function GitPaneFileList({
                       </ContextMenuItem>
                     </ContextMenuContent>
                   </ContextMenu>
+                  {renderActions && (
+                    <>
+                      <div
+                        data-scm-actions
+                        // 半透明行背景不能继承后再次叠加；正常布局预留图标宽度，透明区域露出整行背景。
+                        className="pointer-events-none flex shrink-0 items-center opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          data-scm-action="open"
+                          disabled={!onOpenFile || change.kind === "deleted"}
+                          aria-label={intl.formatMessage({
+                            id: "scm.openFile",
+                          })}
+                          title={intl.formatMessage({ id: "scm.openFile" })}
+                          onClick={() => onOpenFile?.(change)}
+                        >
+                          <FileSymlink className="size-3.5" />
+                        </Button>
+                        {renderActions(change)}
+                      </div>
+                      <span
+                        data-scm-status
+                        className={cn(
+                          "w-6 shrink-0 text-center text-ui-caption",
+                          getWorkspaceFileGitStatusTextClassName(fileGitStatus),
+                        )}
+                      >
+                        {change.section === "conflicted"
+                          ? "U"
+                          : change.isUntracked
+                            ? "U"
+                            : fileGitStatus === "added"
+                              ? "A"
+                              : fileGitStatus === "deleted"
+                                ? "D"
+                                : fileGitStatus === "renamed"
+                                  ? "R"
+                                  : "M"}
+                      </span>
+                    </>
+                  )}
                 </div>
               );
             })}
@@ -225,7 +386,9 @@ export function GitPaneFileList({
             </p>
             <p className="mt-1 text-ui-base text-foreground-subtle">
               {normalizedFilterQuery
-                ? intl.formatMessage({ id: "git.review.noFilteredFileDescription" })
+                ? intl.formatMessage({
+                    id: "git.review.noFilteredFileDescription",
+                  })
                 : intl.formatMessage({ id: "git.empty.description" })}
             </p>
           </div>

@@ -428,6 +428,7 @@ const WorkspaceShellLayoutContent = memo(function WorkspaceShellLayoutComponent(
   handleOpenBrowserPermissionSettings,
   handleOpenWhiteboard,
   handleOpenDeveloperTools,
+  handleOpenSourceControl,
   handleOpenFileManager,
   handleNavigateFileManager,
   handleCodeViewerFocusRequestApplied,
@@ -1366,7 +1367,10 @@ const WorkspaceShellLayoutContent = memo(function WorkspaceShellLayoutComponent(
   const gitDirtyFileCount = useMemo(() => {
     // 关键业务逻辑：同一个文件可能同时出现在 staged / unstaged。
     // 这里按 path 去重后再统计，避免入口里“未提交更改文件数”被重复计算。
-    return getGitDirtyFileCount(gitState.datasets);
+    return getGitDirtyFileCount({
+      staged: gitState.datasets.staged,
+      unstaged: gitState.datasets.unstaged,
+    });
   }, [gitState.datasets.staged, gitState.datasets.unstaged]);
   // Bug 原因：此前本地 workspace 没有 identity 时只按路径取第一个 tab；同路径远程 tab 在前时，
   // 本地任务的 Header 会显示远程设备与连接状态。与 TabStore 共用匹配规则，未传 identity 只命中本地 tab。
@@ -1949,8 +1953,12 @@ const WorkspaceShellLayoutContent = memo(function WorkspaceShellLayoutComponent(
               currentBranchLabel={resolveGitBranchTriggerLabel({
                 headRefType: gitState.summary.headRefType,
                 currentBranchName: gitState.summary.branchName ?? null,
-                detachedLabel: intl.formatMessage({ id: "git.head.detached" }),
-                fallbackLabel: intl.formatMessage({ id: "git.branchSwitcher.label" }),
+                detachedLabel: intl.formatMessage({
+                  id: "git.head.detached",
+                }),
+                fallbackLabel: intl.formatMessage({
+                  id: "git.branchSwitcher.label",
+                }),
               })}
               onSelect={draftWorktreeCallbacks.onSelect}
               // Bug 原因：两个分支胶囊的外层间距不同（px-1 pt-2 与 px-0 pt-0），勾选 worktree 时
@@ -1986,6 +1994,7 @@ const WorkspaceShellLayoutContent = memo(function WorkspaceShellLayoutComponent(
       </>
     ),
     [
+      intl,
       isOfficeMode,
       workspaceRemoteSessionId,
       handleOpenPluginStore,
@@ -2260,6 +2269,7 @@ const WorkspaceShellLayoutContent = memo(function WorkspaceShellLayoutComponent(
       sidePaneOwnerId={sidePaneOwnerId}
       gitState={gitState}
       activeGitSourceId={activeGitSourceId}
+      onOpenSourceControl={handleOpenSourceControl}
       panelRef={options.mobileOverlay ? mobileSidePanePanelRef : sidePanePanelRef}
       panelElementRef={
         options.mobileOverlay ? mobileSidePanePanelElementRef : sidePanePanelElementRef

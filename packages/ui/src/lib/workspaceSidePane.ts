@@ -43,6 +43,14 @@ export interface BrowserPermissionsSidePaneTab {
   openedAt?: number;
 }
 
+export interface SourceControlSidePaneTab {
+  id: "source-control";
+  type: "source-control";
+  ownerTaskId?: string | null;
+  workspaceKey?: string | null;
+  openedAt?: number;
+}
+
 export interface GitSidePaneTab {
   id: "git";
   type: "git";
@@ -604,6 +612,7 @@ export type WorkspaceSidePaneTab =
   | BackgroundBashSidePaneTab
   | BrowserSidePaneTab
   | BrowserPermissionsSidePaneTab
+  | SourceControlSidePaneTab
   | GitSidePaneTab
   | CodeViewerSidePaneTab
   | TreemappingSidePaneTab
@@ -1225,6 +1234,7 @@ export function isSidePaneTabVisibleInScope(
   }
   if (!sidePaneTabMatchesWorkspace(tab, scope.workspaceKey)) return false;
   switch (tab.type) {
+    case "source-control":
     case "git":
     case "developer-tools":
     // 扩展视图是工作区级（docs/plugins/extension-host.md §8）：草稿首发、切换会话后保留。
@@ -1930,6 +1940,17 @@ export function openCodeViewerSidePanes(
     ...next,
     activeTabId: openedTabIds[safeIndex]!,
   };
+}
+
+export function activateSourceControlSidePane(
+  current: WorkspaceSidePaneState | null,
+): WorkspaceSidePaneState {
+  // 重复打开必须保留已有归属和 openedAt；不能用新对象覆盖恢复后的 workspace 身份。
+  const existing = current?.tabs.find((tab) => tab.type === "source-control");
+  return activateSidePaneTab(
+    current,
+    existing ?? { id: "source-control", type: "source-control", openedAt: Date.now() },
+  );
 }
 
 export function activateGitSidePane(

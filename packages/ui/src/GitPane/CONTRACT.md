@@ -2,6 +2,8 @@
 
 登记 `GitPane.tsx`、`GitPane/` 和 `lib/gitReviewSettings.ts`，把审查布局的实际 UI owner、子组件和纯偏好定义纳入同一 managed 模块。产品规则与验收场景以 [审查布局 spec](../../../../docs/git-review-split-layout.md) 为准。
 
+- `ProjectSourceControlPanel` 通过公开 contract 导出，唯一持有 SCM 目录选择：从当前 Host 的 projectService 读取任务所属项目 roots，默认 task cwd 复用 App 快照，其他 root 使用既有 useGitRepository/useGitAutoRefresh 的目标实例；ServiceProvider 由现有 workspace resolution 绑定同 Host，远端 root identity 使用统一构造器。不导航、不新建 Git cache。identity+cwd 切换重建内部 `SourceControlPanel` 草稿、确认、错误与 GitPane selection；同目标刷新保留正文。`SourceControlPanel` 只持有草稿、AI 版本、确认与错误。写操作通过 useGitActions 同目标 admission。SCM 通过 `GitPane.sourceControl` 组合提交区、分组和行操作；GitPane 与 GitPaneFileList 仍唯一持有选择、虚拟列表、diff cache/generation 和分栏。SCM 不另建路径列表或打开 review 标签；同路径按 source+path 区分。产品规则见 [SCM spec](../../../../docs/git/source-control-panel.md)。
+- SCM 的 `sourceControl.header` 只挂在列表栏内；`collapsedSections/onToggleSection` 是 SCM 局部展示状态，列表按其投影虚拟行。SCM 分栏使用同一 ResizablePanelGroup、独立 `source-control-layout` 布局键，默认 320px、最小 280px；首次挂载/窄屏返回双栏初始化 320px，保持双栏时用户拖宽及容器放大保留像素宽度，不承诺跨重挂恢复 SCM 拖宽。普通 review 保留原宽度。文件直接打开复用 GitPane 的 CodeViewer 回调，diff 仍使用原选择与缓存。SCM 的 diff 模式按钮通过 `GitPaneDiffContent.headerActions` 放入内容标题，不创建全宽工具区。
 - `GitPane` 持有选中文件、路径过滤、窄面板导航与 diff 展示缓存；数据源选择由调用方通过 props 控制。列表只投影过滤条件并管理滚动，内容区只管理当前选区与评论草稿，不建立第二份 Git 数据缓存。
 - `gitReviewSettings` 的唯一可变状态与持久化路径仍是 `store/index.ts` 的切片及 `setGitReviewSettings`，只保存 diff 模式和列表显隐。纯偏好定义不读写 localStorage，不新增广播。
 - 代码换行读取现有 `codePreviewSettings.wrapLongLines`，rich/patch 映射为 `overflow="wrap" / "scroll"`，轻量预览直接使用原设置。内容区不覆盖全局偏好，设置切换由渲染/尺寸事件更新概览，保留当前评论草稿。

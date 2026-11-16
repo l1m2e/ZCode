@@ -36,6 +36,9 @@ function buildFileChange(
 ): GitFileChange {
   return {
     path: toAbsolutePath(snapshot.resolution.repoRoot, entry.path),
+    originalPath: entry.originalPath
+      ? toAbsolutePath(snapshot.resolution.repoRoot, entry.originalPath)
+      : null,
     repoRelativePath: entry.path,
     workspaceRelativePath: toWorkspaceRelativeGitPath(
       entry.path,
@@ -51,17 +54,6 @@ function buildFileChange(
     isUntracked: section === "untracked",
     isConflicted: section === "conflicted",
   };
-}
-
-function shouldIncludeUntrackedChange(
-  entry: GitStatusEntry,
-  stat: { added: number; removed: number },
-): boolean {
-  // 构建目录里常见大量未跟踪的空文件、失效链接或不可读产物。
-  // 这类条目没有可审查的文本增删，之前会以 +0/-0 挤进 Review 面板，既污染列表又拖慢打开。
-  // 但详细 status 超限后，Git 会用末尾 `/` 的目录记录表达整棵未跟踪目录；它本身不可读，
-  // 行数必然为 0，却仍必须作为可 stage/discard 的降级入口保留。
-  return entry.path.endsWith("/") || stat.added > 0 || stat.removed > 0;
 }
 
 function toChangeForSource(
@@ -94,9 +86,7 @@ function toChangeForSource(
       added: 0,
       removed: 0,
     };
-    if (!shouldIncludeUntrackedChange(entry, stat)) {
-      return null;
-    }
+    // 状态与文本统计无关：空文件、二进制和超限文件也必须允许暂存及精确丢弃。
     return buildFileChange(snapshot, entry, "untracked", stat.added, stat.removed);
   }
 
@@ -130,6 +120,9 @@ function toBranchComparisonChange(
 
   return {
     path: toAbsolutePath(snapshot.resolution.repoRoot, change.path),
+    originalPath: change.originalPath
+      ? toAbsolutePath(snapshot.resolution.repoRoot, change.originalPath)
+      : null,
     repoRelativePath: change.path,
     workspaceRelativePath: toWorkspaceRelativeGitPath(
       change.path,

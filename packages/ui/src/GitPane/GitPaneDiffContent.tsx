@@ -3,6 +3,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  type ReactNode,
   type RefObject,
   type UIEventHandler,
 } from "react";
@@ -82,6 +83,7 @@ export function GitPaneDiffContent({
   narrowLayout = false,
   onBackToList,
   onOpenFilePreview,
+  headerActions,
   showHeader = true,
   renderHeavyContent = true,
   preferFullContent = false,
@@ -101,6 +103,7 @@ export function GitPaneDiffContent({
   narrowLayout?: boolean;
   onBackToList?: () => void;
   onOpenFilePreview?: () => void;
+  headerActions?: ReactNode;
   showHeader?: boolean;
   renderHeavyContent?: boolean;
   preferFullContent?: boolean;
@@ -321,6 +324,7 @@ export function GitPaneDiffContent({
             <span className="text-diff-added">+{change.added}</span>
             <span className="ml-2 text-diff-removed">-{change.removed}</span>
           </div>
+          {headerActions}
           {onOpenFilePreview ? (
             <Button
               type="button"
