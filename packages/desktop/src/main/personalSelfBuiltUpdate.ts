@@ -1,7 +1,7 @@
 /* oxlint-disable eslint(max-lines) -- 自编译更新源：文件读取、状态发布与安装器编排共享同一份 manifest 事实，拆开会增加跨模块同步漂移 */
 import { execFile, spawn } from "node:child_process";
 import { promises as fs, watch } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { app, ipcMain } from "electron";
 import type { PostUpdateReleaseNotesPayload } from "@zcode/shared";
 import { PlatformChannels } from "@zcode/shared";
@@ -13,22 +13,13 @@ import {
 } from "./autoUpdater.js";
 import { logger } from "./logger.js";
 
-// personal-mods 专用：CI 发布清单是唯一自动更新源；本地构建产物只服务手动构建。
-// 远程：60 秒轮询 GitHub Release latest 的 personal-update.json，buildId 比已安装新
-// 就点亮现成的「更新」胶囊，确认后拉起 sync-personal-mods.sh --install-remote。
-// 本地：不做启动检查与周期轮询（官方同步构建归 CI schedule 负责），只有自己跑
-// sync-personal-mods.sh 写完 ~/.zcode/v2/personal-mods-update.json 时由 watch 立即
-// 点亮，确认后走 --install-only（等待 app 退出 → ditto 替换 → 重启）。
+// personal-mods 只消费本地已打包产物：启动检查 + 构建完成 watch，复用现有更新 UI。
+// 点击复验后走 --install-only，等待退出、替换本地包并重启；CI 仅供手动下载。
 
 const MANIFEST_PATH = join(app.getPath("home"), ".zcode", "v2", "personal-mods-update.json");
 // 每次构建追加一条（sync-personal-mods.sh 的 write_build_metadata），记录该次构建的
 // 官方基线与个人补丁栈主题；更新弹窗据此计算「官方更新 / 个人修改」两个区间
 const BUILDS_HISTORY_PATH = join(app.getPath("home"), ".zcode", "v2", "personal-mods-builds.jsonl");
-// CI 发布清单固定地址（GitHub Release latest 直链）。
-// 留空 = 远程更新通道关闭，只剩本地手动构建的 watch 点亮
-const PERSONAL_UPDATE_MANIFEST_URL =
-  "https://github.com/l1m2e/ZCode/releases/latest/download/personal-update.json";
-const REMOTE_CHECK_INTERVAL_MS = 60 * 1000;
 const INSTALLER_WAIT_MS = 300 * 1000;
 
 interface PersonalUpdateManifest {
@@ -45,15 +36,6 @@ interface PersonalBuildHistoryEntry {
   officialBase?: string;
   /** 该次构建包含的个人补丁栈主题（main..HEAD），跨 rebase 稳定，用于集合差 */
   personal?: string[];
-}
-
-/** CI 发布清单（publish-personal-release.sh 生成，挂在 Release 资产上）。 */
-interface RemoteUpdateManifest extends PersonalBuildHistoryEntry {
-  version?: string;
-  zipUrl?: string;
-  sha256?: string;
-  size?: number;
-  builtAt?: string;
 }
 
 interface InitSelfBuiltUpdateOptions {
@@ -91,8 +73,14 @@ async function readManifest(): Promise<PersonalUpdateManifest | null> {
       version: parsed.version.trim(),
       distPath: parsed.distPath.trim(),
       scriptPath: parsed.scriptPath.trim(),
-      repoPath: typeof parsed.repoPath === "string" && parsed.repoPath.trim() ? parsed.repoPath.trim() : undefined,
-      buildId: typeof parsed.buildId === "string" && parsed.buildId.trim() ? parsed.buildId.trim() : undefined,
+      repoPath:
+        typeof parsed.repoPath === "string" && parsed.repoPath.trim()
+          ? parsed.repoPath.trim()
+          : undefined,
+      buildId:
+        typeof parsed.buildId === "string" && parsed.buildId.trim()
+          ? parsed.buildId.trim()
+          : undefined,
     };
   } catch {
     return null;
@@ -174,14 +162,9 @@ function buildNumberLabel(buildId: string | null | undefined): string | null {
   return match ? `p${match[1]}` : null;
 }
 
-/**
- * 构建 ID 排序键：p<N> 序号补零 + 尾部 UTC 时间戳。本地脚本离线兜底按历史行数计数、
- * CI 按 tag 数计数，两个计数器可能撞出相同序号（如都为 p2），序号相同时以时间戳决胜。
- * 无序号的旧格式 ID 返回 null，不参与比较。
- */
-function buildSortKey(buildId: string | null): string | null {
-  const [, num, ts] = /-p(\d+)-(\d{14})$/.exec(buildId ?? "") ?? [];
-  return num && ts ? `${num.padStart(6, "0")}-${ts}` : null;
+/** 本地离线序号与 CI tag 计数不可比较；按 UTC 时间判断，兼容旧版无 p 序号 ID。 */
+function buildTimestamp(buildId: string): string | null {
+  return /-(\d{14})$/.exec(buildId)?.[1] ?? null;
 }
 
 /**
@@ -302,116 +285,101 @@ async function buildSelfBuiltNotes(
   };
 }
 
+/** 启动、watch 和点击共用事实读取，避免 UI 点亮后使用过期或半成品包。 */
+async function readReadyBuild(): Promise<{
+  manifest: PersonalUpdateManifest & { buildId: string };
+  appBuildId: string | null;
+} | null> {
+  const manifest = await readManifest();
+  if (!manifest?.buildId) return null;
+  const expectedDist = resolve(
+    dirname(manifest.scriptPath),
+    "../packages/desktop/dist/mac-arm64/ZCode Preview.app",
+  );
+  if (resolve(manifest.distPath) !== expectedDist) return null;
+  const [distBuildId, appBuildId] = await Promise.all([
+    readBuildId(manifest.distPath),
+    readBuildId(installedAppPath()),
+  ]);
+  if (distBuildId !== manifest.buildId || distBuildId === appBuildId) return null;
+  const candidateTime = buildTimestamp(distBuildId);
+  const installedTime = appBuildId ? buildTimestamp(appBuildId) : null;
+  // 旧逻辑只判断不同，会把陈旧本地产物覆盖到新安装包；无法比较时保守拒绝。
+  if (!candidateTime || (appBuildId && (!installedTime || candidateTime <= installedTime)))
+    return null;
+  const files = [
+    manifest.scriptPath,
+    join(manifest.distPath, "Contents/Info.plist"),
+    join(manifest.distPath, "Contents/MacOS/ZCode Preview"),
+    join(manifest.distPath, "Contents/Resources/app.asar"),
+  ];
+  if (
+    !(
+      await Promise.all(
+        files.map((file) =>
+          fs
+            .stat(file)
+            .then((stat) => stat.isFile())
+            .catch(() => false),
+        ),
+      )
+    ).every(Boolean)
+  )
+    return null;
+  return { manifest: { ...manifest, buildId: distBuildId }, appBuildId };
+}
+
 let publishing = false;
-/** 待安装的远程构建；点亮后由「更新」按钮消费，本地构建源为 null。 */
-let pendingRemoteInstall: RemoteUpdateManifest | null = null;
+let checkRequested = false;
+let installing = false;
 
 async function checkAndPublish(options: InitSelfBuiltUpdateOptions): Promise<void> {
-  if (publishing) return;
+  checkRequested = true;
+  if (publishing || installing) return;
   publishing = true;
   try {
-    const manifest = await readManifest();
-    if (!manifest) {
-      clearSelfBuiltUpdateReadyState();
-      return;
-    }
-    const [distBuildId, appBuildId] = await Promise.all([
-      readBuildId(manifest.distPath),
-      readBuildId(installedAppPath()),
-    ]);
-    // 与 sync-personal-mods.sh 同口径：dist 没有构建 ID（旧产物）或与已安装一致 → 无待装更新
-    if (distBuildId === null || distBuildId === appBuildId) {
-      clearSelfBuiltUpdateReadyState();
-      return;
-    }
-    pendingRemoteInstall = null;
-    const notes = await buildSelfBuiltNotes(options.settingService, manifest, appBuildId);
-    publishSelfBuiltUpdateReady(manifest.version, notes);
+    do {
+      checkRequested = false;
+      const ready = await readReadyBuild();
+      const notes = ready
+        ? await buildSelfBuiltNotes(options.settingService, ready.manifest, ready.appBuildId)
+        : null;
+      // watch 在异步读日志期间到达时，重新读取事实，不发布旧候选。
+      if (checkRequested || installing) continue;
+      if (ready) publishSelfBuiltUpdateReady(ready.manifest.version, notes);
+      else clearSelfBuiltUpdateReadyState();
+    } while (checkRequested && !installing);
   } catch (error) {
+    clearSelfBuiltUpdateReadyState();
     logger.warn("[self-built-update] check failed:", error);
   } finally {
     publishing = false;
   }
 }
 
-/**
- * 远程更新通道：轮询 CI 发布清单，buildId 比已安装新就点亮。远程构建记录并入
- * 本地历史文件，分区日志的差集计算与本地构建共用同一份存储。
- */
-async function checkRemoteUpdate(options: InitSelfBuiltUpdateOptions): Promise<void> {
-  if (!PERSONAL_UPDATE_MANIFEST_URL || publishing) return;
-  publishing = true;
-  try {
-    const response = await fetch(PERSONAL_UPDATE_MANIFEST_URL, {
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!response.ok) return;
-    const remote = JSON.parse(await response.text()) as Partial<RemoteUpdateManifest>;
-    if (
-      typeof remote.buildId !== "string" ||
-      !remote.buildId.trim() ||
-      typeof remote.zipUrl !== "string" ||
-      !remote.zipUrl.trim() ||
-      typeof remote.sha256 !== "string" ||
-      !remote.sha256.trim()
-    ) {
-      return;
-    }
-    const installedId = await readBuildId(installedAppPath());
-    if (remote.buildId === installedId) return;
-    // 防回退：两边都有序号时，远程排序键（p<N> 补零 + 时间戳）必须严格大于已安装
-    // 才点亮。不能只比序号——本地与 CI 双计数器撞号时（同为 p2），真正更新的远程
-    // 构建会被误判为回退而永远不亮（2026-11-05 实测触发）
-    const remoteKey = buildSortKey(remote.buildId);
-    const installedKey = buildSortKey(installedId);
-    if (remoteKey !== null && installedKey !== null && remoteKey <= installedKey) {
-      return;
-    }
-    // 60 秒轮询下同一 buildId 只追加一次，避免待装期间历史文件被重复行灌满
-    if (!(await readBuildHistoryEntry(remote.buildId))) {
-      await fs.appendFile(
-        BUILDS_HISTORY_PATH,
-        `${JSON.stringify({
-          buildId: remote.buildId,
-          officialBase: remote.officialBase,
-          personal: remote.personal,
-        })}\n`,
-      );
-    }
-    pendingRemoteInstall = remote as RemoteUpdateManifest;
-    const localManifest = await readManifest();
-    const notes = await buildSelfBuiltNotes(options.settingService, {
-      version: typeof remote.version === "string" && remote.version.trim() ? remote.version.trim() : app.getVersion(),
-      distPath: localManifest?.distPath ?? "",
-      scriptPath: localManifest?.scriptPath ?? "",
-      repoPath: localManifest?.repoPath,
-      buildId: remote.buildId,
-    }, installedId);
-    publishSelfBuiltUpdateReady(notes.version, notes);
-  } catch (error) {
-    logger.warn("[self-built-update] remote check failed:", error);
-  } finally {
-    publishing = false;
-  }
-}
-
-function spawnInstaller(manifest: PersonalUpdateManifest): void {
+function spawnInstaller(manifest: PersonalUpdateManifest & { buildId: string }): Promise<void> {
   // detached：app.exit 后安装器继续完成替换并重启。
   // APP_PID 让脚本用 kill -0 精确等待主进程退出，替代会误匹配 zcode-cli 等
   // 存活子进程（进程标题内嵌含 app 路径的 PATH）的 pgrep -f
-  const child = spawn("/bin/bash", [manifest.scriptPath, "--install-only"], {
+  const child = spawn("/bin/bash", [manifest.scriptPath, "--install-only", manifest.buildId], {
     detached: true,
     stdio: "ignore",
-    env: { ...process.env, PERSONAL_INSTALL_WAIT_MS: String(INSTALLER_WAIT_MS), APP_PID: String(process.pid) },
+    env: {
+      ...process.env,
+      PERSONAL_INSTALL_WAIT_MS: String(INSTALLER_WAIT_MS),
+      APP_PID: String(process.pid),
+    },
   });
-  child.unref();
+  return new Promise((resolveSpawn, reject) => {
+    child.once("error", reject);
+    child.once("spawn", () => {
+      child.unref();
+      resolveSpawn();
+    });
+  });
 }
 
-function execFileText(
-  file: string,
-  args: readonly string[],
-  cwd?: string,
-): Promise<string | null> {
+function execFileText(file: string, args: readonly string[], cwd?: string): Promise<string | null> {
   return new Promise((resolve) => {
     execFile(file, args, { ...(cwd ? { cwd } : {}), timeout: 30_000 }, (error, stdout) => {
       resolve(error ? null : String(stdout).trim());
@@ -442,77 +410,45 @@ export function initSelfBuiltUpdateSupport(options: InitSelfBuiltUpdateOptions):
 
   // electron-updater 禁用时这些 IPC handler 不会注册，这里按同一通道接自编译安装流程
   const install = async (rejectUnavailable: boolean): Promise<void> => {
-    if (pendingRemoteInstall) {
-      const remote = pendingRemoteInstall;
-      const localManifest = await readManifest();
-      if (!localManifest?.scriptPath) {
-        const message = "远程安装失败：未找到 sync-personal-mods.sh（本机需保留检出仓库）";
-        logger.warn(`[self-built-update] install aborted: ${message}`);
-        if (rejectUnavailable) throw new Error(message);
-        return;
+    if (installing) return;
+    installing = true;
+    try {
+      const ready = await readReadyBuild();
+      if (!ready) {
+        clearSelfBuiltUpdateReadyState();
+        throw new Error("没有可安装的新本地自编译构建（产物缺失、已安装、较旧或清单不匹配）");
       }
-      logger.info(`[self-built-update] install remote version=${remote.version ?? "?"}`);
-      const child = spawn(
-        "/bin/bash",
-        [localManifest.scriptPath, "--install-remote", remote.zipUrl ?? "", remote.sha256 ?? ""],
-        { detached: true, stdio: "ignore", env: { ...process.env, PERSONAL_INSTALL_WAIT_MS: String(INSTALLER_WAIT_MS), APP_PID: String(process.pid) } },
-      );
-      child.unref();
+      logger.info(`[self-built-update] user requested install version=${ready.manifest.version}`);
+      await spawnInstaller(ready.manifest);
       await options.prepareQuit();
       app.exit(0);
-      return;
+    } catch (error) {
+      installing = false;
+      logger.warn("[self-built-update] install aborted:", error);
+      if (rejectUnavailable) throw error;
     }
-    const manifest = await readManifest();
-    // 退出前先验证构建产物在位，避免 app 退出后安装器才发现无事可装
-    const distReady = manifest
-      ? await fs
-          .stat(join(manifest.distPath, ".personal-build-id"))
-          .then(() => true)
-          .catch(() => false)
-      : false;
-    if (!manifest || !distReady) {
-      const message = manifest
-        ? `构建产物缺失：${manifest.distPath}（先运行 sync-personal-mods.sh 重新构建）`
-        : "没有可安装的自编译更新包（未找到构建产物清单）";
-      logger.warn(`[self-built-update] install aborted: ${message}`);
-      if (rejectUnavailable) throw new Error(message);
-      return;
-    }
-    logger.info(`[self-built-update] user requested install version=${manifest.version}`);
-    spawnInstaller(manifest);
-    await options.prepareQuit();
-    app.exit(0);
   };
   ipcMain.handle(PlatformChannels.QuitAndInstallUpdate, () => install(true));
   ipcMain.on(PlatformChannels.QuitAndInstallUpdate, () => {
     void install(false);
   });
 
-  if (PERSONAL_UPDATE_MANIFEST_URL) {
-    // 远程发布清单很小，60 秒一次的轮询成本可忽略；CI 构建通常 6~10 分钟，
-    // 该节奏足以在发包后一分钟内点亮
-    void checkRemoteUpdate(options);
-    const remoteTimer = setInterval(() => {
-      void checkRemoteUpdate(options);
-    }, REMOTE_CHECK_INTERVAL_MS);
-    remoteTimer.unref?.();
-  }
-
-  // 本地构建源的唯一触发路径：自己跑完构建（构建 ID 先于 manifest 落盘）即点亮，
-  // 无启动检查、无周期轮询，官方同步构建归 CI schedule 负责。监听 manifest 所在
-  // 目录（而非文件本身，避免被删除重建后监听失效），防抖后只做本地比对。
-  let manifestWatchDebounce: NodeJS.Timeout | undefined;
-  try {
-    watch(join(MANIFEST_PATH, ".."), (_event, filename) => {
-      if (filename !== "personal-mods-update.json") return;
-      clearTimeout(manifestWatchDebounce);
-      manifestWatchDebounce = setTimeout(() => {
+  // 监听目录以兼容原子替换。先建立 watch 再启动检查，避免启动窗口漏掉完成通知。
+  void (async () => {
+    try {
+      await fs.mkdir(dirname(MANIFEST_PATH), { recursive: true });
+      const watcher = watch(dirname(MANIFEST_PATH), (_event, filename) => {
+        if (filename !== null && filename !== "personal-mods-update.json") return;
         void checkAndPublish(options);
-      }, 2_000);
-      manifestWatchDebounce.unref?.();
-    });
-  } catch (error) {
-    logger.warn("[self-built-update] manifest watch unavailable, poll remains:", error);
-  }
+      });
+      watcher.on("error", (error) =>
+        logger.warn("[self-built-update] manifest watch failed:", error),
+      );
+      app.once("will-quit", () => watcher.close());
+    } catch (error) {
+      logger.warn("[self-built-update] manifest watch unavailable:", error);
+    }
+    await checkAndPublish(options);
+  })();
   logger.info("[self-built-update] initialized", { manifestPath: MANIFEST_PATH });
 }

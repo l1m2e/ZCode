@@ -1,6 +1,6 @@
 #!/bin/bash
 # personal-mods 专用（见 LOCAL-MODS.md）：同步官方代码并重编译构建产物。
-# 由 launchd 定时触发（dev.zcode.personal-mods-sync）或手动运行。流程：
+# 手动运行；应用只检查本地完成的构建，不触发同步。流程：
 #   fetch 官方 → main fast-forward → rebase personal-mods → install/校验 → 构建 → 写更新清单。
 # 本脚本不安装：构建完成后在 app 内点「更新」按钮安装（personalSelfBuiltUpdate 模块
 # 拉起本脚本 --install-only 完成退出-替换-重启）。任一步失败弹系统通知并停在安全状态；
@@ -73,10 +73,6 @@ write_build_metadata() {
   printf '%s\n' "$build_id" > "$DIST/.personal-build-id"
   # 记录本次产物的源码 HEAD：守卫据此判断 dist 是否构建自当前 personal-mods
   git rev-parse HEAD > "$DIST/.personal-build-head"
-  printf '{\n  "version": "%s",\n  "buildId": "%s",\n  "distPath": "%s",\n  "scriptPath": "%s",\n  "repoPath": "%s",\n  "builtAt": "%s"\n}\n' \
-    "$dist_version" "$build_id" "$PWD/$DIST" "$PWD/scripts/sync-personal-mods.sh" "$PWD" "$built_at" \
-    > "$HOME/.zcode/v2/personal-mods-update.json"
-
   # main..HEAD 的提交主题即个人补丁栈；主题跨 rebase 稳定，可跨构建做集合差
   local personal_json="" sep="" subject
   while IFS= read -r subject; do
@@ -88,11 +84,18 @@ write_build_metadata() {
   done < <(git log main..HEAD --pretty=format:%s)
   printf '{"buildId":"%s","builtAt":"%s","officialBase":"%s","personal":[%s]}\n' \
     "$build_id" "$built_at" "$official_base" "$personal_json" >> "$history"
+  # 历史与产物完成后原子发布清单，watch 不会读到半写入 JSON。
+  local manifest_tmp
+  manifest_tmp=$(mktemp "$HOME/.zcode/v2/.personal-mods-update.XXXXXX")
+  printf '{\n  "version": "%s",\n  "buildId": "%s",\n  "distPath": "%s",\n  "scriptPath": "%s",\n  "repoPath": "%s",\n  "builtAt": "%s"\n}\n' \
+    "$dist_version" "$build_id" "$PWD/$DIST" "$PWD/scripts/sync-personal-mods.sh" "$PWD" "$built_at" \
+    > "$manifest_tmp"
+  mv -f "$manifest_tmp" "$HOME/.zcode/v2/personal-mods-update.json"
 }
 
 echo "=== $(date '+%F %T') start ==="
 
-# 等待运行中的 app 退出（安装前置步骤，--install-only / --install-remote 共用）。
+# 等待运行中的 app 退出（--install-only 的前置步骤）。
 # 优先用 app 拉起安装器时注入的 APP_PID 做 kill -0 探测：旧的 pgrep -f "ZCode Preview"
 # 会误匹配进程标题里内嵌 PATH（含 "ZCode Preview.app" 字样）的 zcode-cli/MCP 等
 # 存活子进程，导致等待超时放弃安装；无 APP_PID（手动调用）时退回 pgrep。
@@ -122,39 +125,21 @@ if [ "${1:-}" = "--record" ]; then
   exit 0
 fi
 
-# --install-remote <zipUrl> <sha256>：下载 CI 发布的 zip，校验、剥 quarantine
-# 后替换安装。下载的文件带 com.apple.quarantine xattr，不剥掉 Gatekeeper 会拦截启动
-if [ "${1:-}" = "--install-remote" ]; then
-  zip_url="${2:-}"
-  want_sha="${3:-}"
-  [ -n "$zip_url" ] && [ -n "$want_sha" ] || fail "用法：--install-remote <zipUrl> <sha256>"
-  stage="$(mktemp -d)"
-  # 下载发生在 app 退出之后：慢网时用户要等完整个 230MB 才见到重启，介意的话
-  # 再改成主进程先下载到 staging、退出后只做本地替换
-  notify "开始下载自编译更新包，完成后自动重启"
-  # 必须带超时：2026-11-06 实测 GitHub CDN 挂起时 curl 无 --max-time 会永久卡住——
-  # app 已退出、无日志无通知，用户只能手动重开，安装不了了之
-  curl -fsSL --retry 3 --connect-timeout 20 --max-time 1800 "$zip_url" -o "$stage/build.zip" \
-    || fail "下载构建包失败（网络超时或不可达），请重开 app 重试：$zip_url"
-  echo "$want_sha  $stage/build.zip" | shasum -a 256 -c - >/dev/null || fail "sha256 校验失败，已中止安装"
-  ditto -x -k "$stage/build.zip" "$stage/app" || fail "解包失败"
-  xattr -dr com.apple.quarantine "$stage/app" 2>/dev/null || true
-  wait_app_exit
-  rm -rf "$APP"
-  ditto "$stage/app" "$APP"
-  rm -rf "$stage"
-  echo "installed (install-remote) $(date '+%F %T')"
-  open "$APP"
-  notify "自编译更新已安装并重启"
-  exit 0
-fi
-
 # --install-only：由 app 内「更新」按钮触发。app 正在退出，等待退出后替换并重启
 if [ "${1:-}" = "--install-only" ]; then
+  expected_build_id="${2:-}"
+  [ -n "$expected_build_id" ] || fail "用法：--install-only <buildId>"
+  # 按按钮复验的 ID 固定候选；等待退出期间若重建，不能安装另一份未经确认的包。
+  verify_install_candidate() {
+    [ -f "$DIST/.personal-build-id" ] || fail "构建 ID 缺失"
+    [ "$(cat "$DIST/.personal-build-id")" = "$expected_build_id" ] || fail "构建已变化，请重新检查更新"
+    for file in "Contents/Info.plist" "Contents/MacOS/ZCode Preview" "Contents/Resources/app.asar"; do
+      [ -f "$DIST/$file" ] || fail "构建产物不完整：$file"
+    done
+  }
+  verify_install_candidate
   wait_app_exit
-  if [ ! -d "$DIST" ]; then
-    fail "构建产物缺失：$PWD/$DIST"
-  fi
+  verify_install_candidate
   rm -rf "$APP"
   ditto "$DIST" "$APP"
   echo "installed (install-only) $(date '+%F %T')"
@@ -162,6 +147,9 @@ if [ "${1:-}" = "--install-only" ]; then
   notify "自编译更新已安装并重启"
   exit 0
 fi
+
+# 未知入口必须在同步流程前拒绝，避免已移除选项意外触发 fetch/rebase/build。
+[ "$#" -eq 0 ] || fail "未知参数：$1（支持 --record 或 --install-only <buildId>）"
 
 if ! git diff --quiet || ! git diff --cached --quiet; then
   echo "dirty worktree, skip"
@@ -208,15 +196,18 @@ fi
 
 pnpm install --frozen-lockfile || fail "pnpm install 失败，未安装更新"
 
-# 源码自上次构建后未变（dist 比最新提交还新）时跳过校验与构建，直接走安装
-if [ -d "$DIST" ] &&
-  [ "$(stat -f %m "$DIST")" -ge "$(git log -1 --format=%ct)" ]; then
-  echo "dist newer than HEAD, skip validate+build"
+# mtime 会被复制或目录写入改变，不能证明源码一致；只复用已记录同一 HEAD 的完整包。
+if [ -f "$DIST/.personal-build-id" ] &&
+  [ -f "$DIST/Contents/Resources/app.asar" ] &&
+  [ "$(cat "$DIST/.personal-build-head" 2>/dev/null)" = "$(git rev-parse HEAD)" ]; then
+  echo "dist matches HEAD, skip validate+build"
 else
   pnpm typecheck || fail "typecheck 未通过，未安装更新"
   pnpm lint || fail "lint 未通过，未安装更新"
   pnpm architecture:check --changed || fail "architecture check 未通过，未安装更新"
 
+  # 先撤销旧产物 ID：构建失败或正在覆盖包内容时，不允许旧清单继续点亮或安装。
+  rm -f "$DIST/.personal-build-id" "$HOME/.zcode/v2/personal-mods-update.json"
   env "${BUILD_ENV[@]}" pnpm --filter @zcode/desktop build ||
     fail "desktop build 失败，未安装更新"
   env "${BUILD_ENV[@]}" pnpm --filter @zcode/desktop bundle ||
