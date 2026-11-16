@@ -306,6 +306,14 @@ export interface ConversationTimelineProps {
   turnNavigatorDirectoryRevision?: number;
   /** 与旧 ChatView 对齐：composer dock 属于同一个滚动视口，sticky 到滚动容器底部。 */
   bottomDock?: ReactNode;
+  /**
+   * 底部状态条：absolute 漂浮在根节点底部的 16px 留白带上（不动 flex 流式布局）。
+   *
+   * dock 在视口内 sticky，原生 overflow 会裁掉其越界绘制；贴窗格底沿的状态行
+   * （composer 会话统计芯片）必须作为视口外的实体行渲染。仅在 dock 存在且
+   * 非居中空态 / 浮窗形态时渲染（与底部留白同条件）。
+   */
+  bottomStrip?: ReactNode;
   /** 分享选择面板所在的共享父容器；用于把 dock 的真实位置写入同一坐标系。 */
   selectionPanelLayoutContainerRef?: { current: HTMLElement | null };
   /**
@@ -397,6 +405,7 @@ function ConversationTimelineImpl({
   onLoadAllOlder,
   turnNavigatorDirectoryRevision = 0,
   bottomDock,
+  bottomStrip,
   selectionPanelLayoutContainerRef,
   backgroundScrollLocked = false,
   emptyState,
@@ -2220,6 +2229,15 @@ function ConversationTimelineImpl({
             </div>
           ) : null}
         </div>
+        {bottomStrip && hasBottomDock && !centeredEmptyLayout && !floatingComposerDock ? (
+          // 视口外的底部状态条（composer 会话统计芯片）：dock 在滚动视口内 sticky，
+          // 越界绘制会被原生 overflow 裁掉，贴底沿的芯片只能渲染在视口之后的实体行。
+          // 用 absolute 漂浮在根节点 16px 底部留白带上：对 flex 布局零影响，
+          // scroll 边缘契约（conversation-session-v4-scroll E2E）与视口几何完全不变。
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20">
+            {bottomStrip}
+          </div>
+        ) : null}
       </div>
       {backToBottomVisible && !bottomDock ? (
         <ConversationBackToBottomButton

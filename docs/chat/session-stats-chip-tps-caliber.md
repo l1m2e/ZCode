@@ -1,6 +1,13 @@
 # Session Stats Chip TPS Caliber
 
-composer 工具条会话统计芯片（`SessionStatsBadges` → `sessionStatsStore`）的输出速度（TPS）口径。CLI runtime 是时间戳的唯一权威来源；renderer 只消费已去重的会话事实（`usage.delta`），不自造时钟。
+会话统计芯片（`SessionStatsBadges` → `sessionStatsStore`）的输出速度（TPS）口径。CLI runtime 是时间戳的唯一权威来源；renderer 只消费已去重的会话事实（`usage.delta`），不自造时钟。
+
+## 挂载位置
+
+两枚芯片（会话统计 / Token 用量）由 `SessionPane` 组装成一条居中窄行，经 `ConversationTimeline` 的 `bottomStrip` 插槽渲染在**滚动视口之外**的时间线根节点底沿，贴窗口底沿。
+
+- 不能放回 composer dock 内：dock 在滚动视口内 sticky，v3.18.0 为防 mask 闪黑把底部留白（`pb-4`）移到视口外后，视口内元素的越界绘制会被原生 overflow 裁掉（曾用 `h-0 + overflow-visible` 被裁掉下半截）。
+- 插槽仅在 dock 存在且非居中空态 / 浮窗形态时渲染（与根节点底部留白条件一致）。timeline 把状态条 `absolute inset-x-0 bottom-0` 漂浮在根节点 16px 底部留白带上：**不参与 flex 流式布局**，视口几何与 scroll 边缘契约（`bottomGap=16px`，`conversation-session-v4-scroll` E2E 断言 ±1px）完全不变，输入框位置也不变；芯片行浮在输入框与窗口底沿之间的原留白带上，其顶部 8px 与滚动视口底沿轻微重叠（与旧版芯片行浮在滚动内容上的视觉一致）。
 
 ## 公式
 
