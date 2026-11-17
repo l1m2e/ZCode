@@ -1,5 +1,8 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
+  // desktop 构建产物（electron-vite 输出，gitignored）：不在全新检出的官方 CI 出现，
+  // 本地构建后常驻且含超长 bundle，扫进去会触发 max-lines error 卡住 lint 门禁。
+  "ignorePatterns": ["packages/desktop/out"],
   "plugins": null,
   "categories": {},
   "rules": {

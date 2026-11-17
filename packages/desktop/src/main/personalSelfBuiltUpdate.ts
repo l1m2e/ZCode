@@ -21,6 +21,33 @@ const MANIFEST_PATH = join(app.getPath("home"), ".zcode", "v2", "personal-mods-u
 // 官方基线与个人补丁栈主题；更新弹窗据此计算「官方更新 / 个人修改」两个区间
 const BUILDS_HISTORY_PATH = join(app.getPath("home"), ".zcode", "v2", "personal-mods-builds.jsonl");
 const INSTALLER_WAIT_MS = 300 * 1000;
+// 检查管线单相位上限。2026-11-16 实测：四个不同时间启动的新实例全部无发布且无任何
+// 日志，唯一无界 await 是更新说明组装内的设置读取——任一相位卡死都会让 publishing
+// 标志永久占用，后续 watch 检查全部静默跳过。相位超时后按兜底值继续发布，并以
+// 相位日志（ready/published）作为「构建完成但不点亮」的第一诊断入口。
+const CHECK_PHASE_TIMEOUT_MS = 8_000;
+
+/** 给检查相位加界：超时写 warn 并取兜底值，原 promise 结果（含迟到的 rejection）安全丢弃。 */
+async function withPhaseTimeout<T>(
+  label: string,
+  promise: Promise<T>,
+  fallback: () => T,
+): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((resolve) => {
+        timer = setTimeout(() => {
+          logger.warn(`[self-built-update] phase ${label} timeout, continue with fallback`);
+          resolve(fallback());
+        }, CHECK_PHASE_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 interface PersonalUpdateManifest {
   version: string;
@@ -340,14 +367,25 @@ async function checkAndPublish(options: InitSelfBuiltUpdateOptions): Promise<voi
   try {
     do {
       checkRequested = false;
-      const ready = await readReadyBuild();
+      const ready = await withPhaseTimeout("readReadyBuild", readReadyBuild(), () => null);
+      logger.info(
+        `[self-built-update] check ready=${ready ? ready.manifest.buildId : "none"}`,
+      );
       const notes = ready
-        ? await buildSelfBuiltNotes(options.settingService, ready.manifest, ready.appBuildId)
+        ? await withPhaseTimeout(
+            "buildSelfBuiltNotes",
+            buildSelfBuiltNotes(options.settingService, ready.manifest, ready.appBuildId),
+            () => fallbackNotes(ready.manifest.version),
+          )
         : null;
       // watch 在异步读日志期间到达时，重新读取事实，不发布旧候选。
       if (checkRequested || installing) continue;
-      if (ready) publishSelfBuiltUpdateReady(ready.manifest.version, notes);
-      else clearSelfBuiltUpdateReadyState();
+      if (ready) {
+        publishSelfBuiltUpdateReady(ready.manifest.version, notes);
+        logger.info(`[self-built-update] published version=${ready.manifest.version}`);
+      } else {
+        clearSelfBuiltUpdateReadyState();
+      }
     } while (checkRequested && !installing);
   } catch (error) {
     clearSelfBuiltUpdateReadyState();
