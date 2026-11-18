@@ -1,7 +1,8 @@
 import { openStatusCapsule } from "#e2e/helpers/status-capsule";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { ServiceChannels } from "@zcode/shared";
+import { TID_SCM_HIDE_TEST_FILES_TOGGLE } from "@zcode/shared/test-ids";
 import {
   callHandoffHost,
   installHandoffRpcProbe,
@@ -37,6 +38,8 @@ const TID_GIT_COMMIT_INCLUDE_UNSTAGED = "git-commit-include-unstaged";
 const TID_GIT_COMMIT_MESSAGE_INPUT = "git-commit-message-input";
 const GIT_FIXTURE_FILE = join(".zcode-e2e", "git-commit-dialog", "tracked-file.md");
 const GIT_FIXTURE_STAGED_FILE = join(".zcode-e2e", "git-commit-dialog", "staged-file.md");
+/** 隐藏测试文件开关的 fixture：目录段命中 test，必须与普通文件同时出现。 */
+const GIT_FIXTURE_TEST_FILE = join("test", "git-commit-dialog", "filter-target.test.ts");
 const execGit = promisify(execFile);
 
 function testId(base: string, suffix: string): string {
@@ -424,6 +427,69 @@ describe("Git 提交弹窗 UI manual-review E2E", () => {
     await $(sel("git-pane")).waitForDisplayed();
     await returnToScmList();
     await message.waitForDisplayed();
+  });
+
+  it("SCM-03: 隐藏测试文件开关只裁剪列表与写操作范围", async function () {
+    this.timeout(TEST_TIMEOUT_MS);
+    await enlargeWindowIfSupported();
+    await waitForWorkspaceApp(DEFAULT_WORKSPACE, 30000);
+    await prepareGitRepositoryFixture();
+    const testFilePath = join(DEFAULT_WORKSPACE, GIT_FIXTURE_TEST_FILE);
+    await mkdir(dirname(testFilePath), { recursive: true });
+    await writeFile(testFilePath, "export const marker = 1;\n", "utf8");
+    await openSourceControlTab();
+    await $(sel("source-control-panel")).waitForDisplayed({ timeout: 30000 });
+    await $(
+      `${sel("source-control-panel")} button[aria-label="刷新"], ${sel("source-control-panel")} button[aria-label="Refresh"]`,
+    ).click();
+    const testRow = `${sel("source-control-panel")} [data-git-review-file-row$="filter-target.test.ts"]`;
+    await $(testRow).waitForDisplayed({ timeout: 15000 });
+
+    const toggle = $(sel(TID_SCM_HIDE_TEST_FILES_TOGGLE));
+    expect(await toggle.getAttribute("aria-pressed")).toBe("false");
+    await toggle.click();
+    await browser.waitUntil(
+      async () => (await $$(testRow).length) === 0,
+      { timeout: 15000, timeoutMsg: "开启隐藏后测试文件仍在列表中" },
+    );
+    // 普通文件必须保留，证明过滤只命中测试路径而不是清空列表。
+    expect(
+      await $$(
+        `${sel("source-control-panel")} [data-git-review-file-row$="tracked-file.md"]`,
+      ).length,
+    ).toBeGreaterThan(0);
+
+    // 批量暂存范围必须与可见列表一致，隐藏的测试文件不能进入 index。
+    await $(sel("source-control-group-unstaged")).moveTo();
+    await $(sel("source-control-stage-all")).click();
+    await browser.waitUntil(
+      async () => {
+        const staged = await execGit("git", ["diff", "--cached", "--name-only"], {
+          cwd: DEFAULT_WORKSPACE,
+        });
+        return staged.stdout.includes("tracked-file.md");
+      },
+      { timeout: 15000, timeoutMsg: "批量暂存没有更新真实 index" },
+    );
+    expect(
+      (
+        await execGit("git", ["diff", "--cached", "--name-only"], {
+          cwd: DEFAULT_WORKSPACE,
+        })
+      ).stdout,
+    ).not.toContain("filter-target.test.ts");
+
+    await toggle.click();
+    await $(testRow).waitForDisplayed({ timeout: 15000 });
+    expect(await toggle.getAttribute("aria-pressed")).toBe("false");
+
+    // 恢复默认展示偏好并移除 fixture，避免污染同套件其他用例。
+    await execGit("git", ["reset", "-q"], { cwd: DEFAULT_WORKSPACE });
+    await rm(testFilePath, { force: true });
+    await $(
+      `${sel("source-control-panel")} button[aria-label="刷新"], ${sel("source-control-panel")} button[aria-label="Refresh"]`,
+    ).click();
+    await $(testRow).waitForExist({ reverse: true, timeout: 15000 });
   });
 
   it("SCM-02: 同一任务项目的多根目录隔离status、diff、index、commit和push", async function () {

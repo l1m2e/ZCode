@@ -89,6 +89,11 @@ const enUS: Record<string, string> = {
   "scm.openFile": "Open File",
   "scm.selectRepository": "Select project directory / repository",
   "scm.title": "Source Control",
+  "scm.hideTestFiles": "Hide test files",
+  "scm.showTestFiles": "Show test files",
+  "scm.testFilesHiddenTitle": "Test files are hidden",
+  "scm.testFilesHiddenDescription":
+    "Every change in this group is a test file. Turn off “Hide test files” to show them.",
   "scm.staged": "Staged Changes",
   "scm.changes": "Changes",
   "scm.conflicts": "Merge Changes",

@@ -12,6 +12,8 @@ SCM 使用 VSCode SCM 的两栏结构：左侧默认 320px、可拖宽的列表�
 
 SCM 文件行为文件图标、普通前景文件名、灰色父目录描述、最右 Git 色状态字母（M/U/A/D/R 等；暂存按 x，未暂存按 y，AM 同文件分别为 A/M），不展示逐行 +/- 统计。hover/focus 显示打开文件、丢弃（仅未暂存）、暂存 plus 或取消暂存 minus 的直接图标，无逐行三点菜单；触屏常显。保留右键菜单，图标点击不触发行选择。文件和分组支持暂存/取消暂存；已暂存组只提供取消暂存，不提供丢弃。丢弃必须先展示确切路径并确认，未跟踪删除只允许明确单文件路径，禁止全仓库 clean。跨 workspace 边界的 rename 可显示，但拒绝写操作并呈现服务错误。
 
+SCM 在仓库名/分支行右缘提供“隐藏测试文件”图标开关（默认显示测试文件，状态持久化在现有 `gitReviewSettings` 展示偏好）。开启后，测试目录或测试命名规则匹配的变更从已暂存/更改列表隐藏，当前选择回退到首个可见文件；分组计数、批量暂存/丢弃以及无暂存时的“暂存并提交”范围都只包含可见文件，隐藏项不会在用户看不到的情况下进入提交。冲突条目不受隐藏影响，避免阻塞原因不可见。隐藏只影响 SCM 列表投影，不改变 Git 快照、index 或普通 Git 审查面板。测试文件判定收敛在单一纯函数 `isTestFilePath`：路径段命中 `test`/`tests`/`__tests__`/`__test__`/`spec`/`e2e`/`testdata`/`__snapshots__`/`__mocks__`/`__fixtures__`/`cypress`，或文件名命中 `*.test.*`/`*.spec.*`/`*.test-d.*`/`*_test.go|py|rb`/`test_*.py`/`*Test(s).java|cs`/`*_spec.rb`/`*.snap`/`conftest.py`。判定按路径段与文件名，不能用子串匹配（`latest.ts`、`contest.ts`、`tests.ts` 不能误判）；`specs` 等产品目录名不参与目录判定，避免把规格源码当成测试。隐藏后列表为空时显示专用空状态并提供恢复入口，不能显示“当前来源下没有可展示的改动”。
+
 默认仅提交当前 cwd 范围的 index，保留同文件未暂存内容及范围外暂存。没有暂存文件时，先确认将当前范围更改暂存再提交。冲突阻止提交。Cmd/Ctrl+Enter 提交。失败保留草稿；提交成功但推送失败显示独立状态并允许只重试 push。首版不新增 pull/fetch/amend/stash/提交图。
 
 ## 所有者与接口
@@ -49,6 +51,7 @@ Desktop continuous 和手机 replayable 的任务连接沿用现有 Host attachm
 - AI 生成中编辑草稿、切 workspace/任务 cwd，旧响应不覆盖；失败保留草稿。
 - 提交成功 push 失败后只重试 push，不重复提交；同目标重复点击和两个入口互斥。
 - 空/二进制/大 untracked 可见；逐文件丢弃确认列出路径，范围外文件保留；unborn unstage 保留文件；rename 不遗留原路径暂存。
+- 隐藏测试文件开关：默认显示；开启后测试路径消失、分组计数与批量动作只覆盖可见文件；提交只包含可见路径；关闭后恢复全部条目且选择仍有效；开关状态跨重载保持。
 - 验证 Desktop E2E Git commit / conversation git review entry、真实隔离临时仓库、typecheck/lint/architecture changed。不新增 App 业务单测。
 
 ## 刷新连续性

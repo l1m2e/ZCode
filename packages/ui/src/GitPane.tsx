@@ -46,6 +46,7 @@ import { useGitEmptyStateCopy } from "@/GitPane/useGitEmptyStateCopy.js";
 import { GitPaneFileList } from "@/GitPane/GitPaneFileList.js";
 import { GitPaneDiffContent, GitPaneDiffEmptyState } from "@/GitPane/GitPaneDiffContent.js";
 import { getFileChangeFindState } from "@/GitPane/fileChangeFindSearch.js";
+import { useVisibleGitPaneChanges } from "@/GitPane/useVisibleGitPaneChanges.js";
 import { logger } from "@/logger.js";
 import { useZCodeStore } from "@/store/StoreProvider.js";
 import { resolveTheme } from "@/useTheme.js";
@@ -93,6 +94,9 @@ export function GitPane({
     renderActions: (change: GitPaneFileChange) => ReactNode;
     collapsedSections: ReadonlySet<string>;
     onToggleSection: (section: string) => void;
+    /** SCM 列表投影谓词与专用空状态；只影响列表和分组计数，不改变 Git 快照。 */
+    changeFilter?: (change: GitPaneFileChange) => boolean;
+    emptyState?: ReactNode;
   };
   selectionRequest?: {
     sourceId: GitChangeSourceId;
@@ -177,20 +181,23 @@ export function GitPane({
       gitState.datasets.unstaged.sections,
     ],
   );
+  // SCM 展示过滤（隐藏测试文件）只裁剪列表投影；快照与写操作范围仍由调用方按可见路径计算。
+  const visibleChanges = useVisibleGitPaneChanges(currentChanges, sourceControl?.changeFilter);
+  const hasChanges = currentChanges.length > 0;
   const normalizedFileChangeFindQuery = fileChangeFindQuery.trim();
   // 旧实现把暂空/失效路径清成 null，却从不补选，数据恢复后右侧一直提示选择文件。
   // 在当前身份和来源内投影有效选择；回退不写导航状态，手机返回列表不会被刷新打断。
   const selectedChange =
     (selection?.workspaceKey === workspaceKey &&
     (sourceControl || selection.sourceId === currentDataset.id)
-      ? (currentChanges.find(
+      ? (visibleChanges.find(
           (change) =>
             change.path === selection.path &&
             (!sourceControl || (change.isStaged ? "staged" : "unstaged") === selection.sourceId),
         ) ??
-        (sourceControl ? currentChanges.find((change) => change.path === selection.path) : null))
+        (sourceControl ? visibleChanges.find((change) => change.path === selection.path) : null))
       : null) ??
-    currentChanges[0] ??
+    visibleChanges[0] ??
     null;
   const selectedPath = selectedChange?.path ?? null;
   const selectedDiffSource = sourceControl
@@ -364,7 +371,7 @@ export function GitPane({
 
   const fileChangeFindTargets = useMemo(
     () =>
-      currentChanges.map((change) => {
+      visibleChanges.map((change) => {
         const diffState =
           change.diff ??
           diffStateByKey[scopedDiffKey(currentDataset.id, change.path)]?.diff ??
@@ -374,7 +381,7 @@ export function GitPane({
           content: getGitPaneDiffFindContent(diffState),
         };
       }),
-    [currentChanges, currentDataset.id, diffStateByKey, scopedDiffKey],
+    [visibleChanges, currentDataset.id, diffStateByKey, scopedDiffKey],
   );
   const fileChangeFindState = useMemo(
     () =>
@@ -394,17 +401,17 @@ export function GitPane({
 
     // 文件变更查找需要命中未选中的文件里的内容。
     // diff 默认在选中时懒加载，所以查找时先把当前来源的 diff 补齐，再用同一套 patch 数据计算全局命中。
-    for (const change of currentChanges) {
+    for (const change of visibleChanges) {
       loadDiffForChange(change, currentDataset.id);
     }
-  }, [currentChanges, currentDataset.id, loadDiffForChange, normalizedFileChangeFindQuery]);
+  }, [visibleChanges, currentDataset.id, loadDiffForChange, normalizedFileChangeFindQuery]);
 
   useEffect(() => {
     if (!activeFileChangeFindMatch) {
       return;
     }
 
-    const activeChange = currentChanges.find(
+    const activeChange = visibleChanges.find(
       (change) => change.path === activeFileChangeFindMatch.path,
     );
     if (!activeChange) {
@@ -422,7 +429,7 @@ export function GitPane({
     loadDiffForChange(activeChange, currentDataset.id);
   }, [
     activeFileChangeFindMatch,
-    currentChanges,
+    visibleChanges,
     currentDataset.id,
     fileChangeFindNavigationRequestId,
     loadDiffForChange,
@@ -555,7 +562,6 @@ export function GitPane({
 
   const scmListPanelRef = usePanelRef();
   const scmListInitialized = useRef(false);
-  const hasChanges = currentChanges.length > 0;
 
   const showListColumn =
     (hasChanges || Boolean(sourceControl)) &&
@@ -713,12 +719,13 @@ export function GitPane({
                   <div className="max-h-[60%] shrink-0 overflow-y-auto">{sourceControl.header}</div>
                 )}
                 <GitPaneFileList
-                  changes={currentChanges}
+                  changes={visibleChanges}
                   selectedSection={sourceControl ? selectedChange?.section : undefined}
                   renderGroupHeader={sourceControl?.renderGroupHeader}
                   renderActions={sourceControl?.renderActions}
                   collapsedSections={sourceControl?.collapsedSections}
                   onToggleSection={sourceControl?.onToggleSection}
+                  emptyState={sourceControl?.emptyState}
                   onOpenFile={onOpenCodeViewer ? handleOpenFilePreview : undefined}
                   filterQuery={filterQuery}
                   onFilterQueryChange={setFilterQuery}

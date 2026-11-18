@@ -14,11 +14,17 @@ export interface GitReviewSettings {
   diffStyle: GitDiffDisplayStyle;
   /** 左侧变更文件列表栏是否可见。 */
   fileListVisible: boolean;
+  /**
+   * 源代码管理列表是否隐藏测试文件。只影响 SCM 列表投影与写操作范围，
+   * 不改变 Git 快照或普通 Git 审查面板。
+   */
+  hideTestFiles: boolean;
 }
 
 export const DEFAULT_GIT_REVIEW_SETTINGS: GitReviewSettings = {
   diffStyle: "split",
   fileListVisible: true,
+  hideTestFiles: false,
 };
 
 export function normalizeGitReviewSettings(patch: Partial<GitReviewSettings>): GitReviewSettings {
@@ -26,5 +32,6 @@ export function normalizeGitReviewSettings(patch: Partial<GitReviewSettings>): G
     diffStyle:
       patch.diffStyle === "unified" || patch.diffStyle === "editor" ? patch.diffStyle : "split",
     fileListVisible: patch.fileListVisible === false ? false : true,
+    hideTestFiles: patch.hideTestFiles === true,
   };
 }

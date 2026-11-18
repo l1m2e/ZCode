@@ -56,6 +56,11 @@ export interface GitPaneFileListProps {
   renderActions?: (change: GitPaneFileChange) => ReactNode;
   collapsedSections?: ReadonlySet<string>;
   onToggleSection?: (section: string) => void;
+  /**
+   * 调用方已过滤掉全部条目但仍有原始改动时展示专用空状态，
+   * 避免把“被展示过滤隐藏”误报成“没有改动”。
+   */
+  emptyState?: ReactNode;
   onOpenFile?: (change: GitPaneFileChange) => void;
   filterQuery: string;
   onFilterQueryChange: (query: string) => void;
@@ -83,6 +88,7 @@ export function GitPaneFileList({
   renderActions,
   collapsedSections,
   onToggleSection,
+  emptyState,
   onOpenFile,
   filterQuery,
   onFilterQueryChange,
@@ -377,19 +383,24 @@ export function GitPaneFileList({
               );
             })}
           </div>
+        ) : normalizedFilterQuery ? (
+          <div className="flex h-full flex-col items-center justify-center px-4 text-center">
+            <p className="text-ui-base font-medium text-foreground">
+              {intl.formatMessage({ id: "git.review.noFilteredFileTitle" })}
+            </p>
+            <p className="mt-1 text-ui-base text-foreground-subtle">
+              {intl.formatMessage({ id: "git.review.noFilteredFileDescription" })}
+            </p>
+          </div>
+        ) : emptyState ? (
+          emptyState
         ) : (
           <div className="flex h-full flex-col items-center justify-center px-4 text-center">
             <p className="text-ui-base font-medium text-foreground">
-              {normalizedFilterQuery
-                ? intl.formatMessage({ id: "git.review.noFilteredFileTitle" })
-                : intl.formatMessage({ id: "git.empty.title" })}
+              {intl.formatMessage({ id: "git.empty.title" })}
             </p>
             <p className="mt-1 text-ui-base text-foreground-subtle">
-              {normalizedFilterQuery
-                ? intl.formatMessage({
-                    id: "git.review.noFilteredFileDescription",
-                  })
-                : intl.formatMessage({ id: "git.empty.description" })}
+              {intl.formatMessage({ id: "git.empty.description" })}
             </p>
           </div>
         )}

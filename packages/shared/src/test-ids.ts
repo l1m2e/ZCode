@@ -103,6 +103,8 @@ export const TID_GIT_REVIEW_LIST_TOGGLE = "git-review-list-toggle";
 export const TID_GIT_REVIEW_DIFF_STYLE_TOGGLE = "git-review-diff-style-toggle";
 /** Git 审查面板选中代码后的评论草稿框 */
 export const TID_GIT_REVIEW_COMMENT_DRAFT = "git-review-comment-draft";
+/** 源代码管理列表“隐藏测试文件”开关 */
+export const TID_SCM_HIDE_TEST_FILES_TOGGLE = "scm-hide-test-files-toggle";
 /** 浏览器地址栏输入框 */
 export const TID_BROWSER_ADDRESS_INPUT = "browser-address-input";
 /** 浏览器后退按钮 */

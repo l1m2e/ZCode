@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { CodeViewerSource } from "@/lib/codeViewer.js";
 import { GitPane } from "@/GitPane.js";
 import {
@@ -10,9 +10,11 @@ import {
   ChevronDown,
   GitBranch,
   Check,
+  FlaskConical,
 } from "lucide-react";
 import { Button } from "@/components/ui/button.js";
 import { Textarea } from "@/components/ui/textarea.js";
+import { TID_SCM_HIDE_TEST_FILES_TOGGLE } from "@zcode/shared/test-ids";
 import {
   Dialog,
   DialogContent,
@@ -33,6 +35,8 @@ import type { GitPaneRepositoryState, GitPaneFileChange } from "@/hooks/useGitRe
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { getErrorMessage } from "@/lib/errorMessage.js";
 import { matchesPrimaryShortcut } from "@/lib/keyboardShortcuts.js";
+import { isTestFilePath } from "@/GitPane/testFileFilter.js";
+import { useZCodeStore } from "@/store/StoreProvider.js";
 
 type Confirmation = {
   paths: string[];
@@ -89,15 +93,55 @@ export function SourceControlPanel({
     [],
   );
   const t = (id: string) => intl.formatMessage({ id });
+  const hideTestFiles = useZCodeStore((state) => state.gitReviewSettings.hideTestFiles);
+  const setGitReviewSettings = useZCodeStore((state) => state.setGitReviewSettings);
   const targetReady =
     gitState.workspaceKey === (workspaceIdentity?.trim() || workspacePath) &&
     gitState.summary.workspacePath === workspacePath;
-  const staged = targetReady
-    ? gitState.datasets.staged.sections.flatMap((section) => section.changes)
-    : [];
-  const unstaged = targetReady
-    ? gitState.datasets.unstaged.sections.flatMap((section) => section.changes)
-    : [];
+  // 隐藏测试文件是列表与写操作范围的共同投影：批量暂存/丢弃和提交都不能
+  // 覆盖用户看不到的条目，否则隐藏功能会悄悄把测试文件带进 index。
+  // 冲突例外：冲突是阻塞提交的状态，隐藏后用户既看不到原因也无法处理，
+  // 因此冲突条目始终可见。
+  const isVisibleChange = useCallback(
+    (file: GitPaneFileChange) =>
+      file.section === "conflicted" ||
+      !hideTestFiles ||
+      !isTestFilePath(file.workspaceRelativePath),
+    [hideTestFiles],
+  );
+  const staged = useMemo(
+    () =>
+      targetReady
+        ? gitState.datasets.staged.sections
+            .flatMap((section) => section.changes)
+            .filter(isVisibleChange)
+        : [],
+    [gitState.datasets.staged.sections, isVisibleChange, targetReady],
+  );
+  const unstaged = useMemo(
+    () =>
+      targetReady
+        ? gitState.datasets.unstaged.sections
+            .flatMap((section) => section.changes)
+            .filter(isVisibleChange)
+        : [],
+    [gitState.datasets.unstaged.sections, isVisibleChange, targetReady],
+  );
+  const hiddenTestFileCount = useMemo(
+    () =>
+      targetReady
+        ? gitState.datasets.staged.sections
+            .concat(gitState.datasets.unstaged.sections)
+            .flatMap((section) => section.changes)
+            .filter((file) => !isVisibleChange(file)).length
+        : 0,
+    [
+      gitState.datasets.staged.sections,
+      gitState.datasets.unstaged.sections,
+      isVisibleChange,
+      targetReady,
+    ],
+  );
   const conflicts = unstaged.filter((file) => file.section === "conflicted");
   const changes = unstaged.filter((file) => file.section !== "conflicted");
   // 刷新期间仍展示旧投影，禁止以旧分组范围继续写操作。
@@ -303,6 +347,19 @@ export function SourceControlPanel({
               {gitState.summary.branchName}
             </span>
           </span>
+          {/* 隐藏测试文件开关贴着仓库/分支行右缘，和标题栏刷新动作分开。 */}
+          <Button
+            variant={hideTestFiles ? "secondary" : "ghost"}
+            size="icon-sm"
+            className="ml-auto shrink-0"
+            data-testid={TID_SCM_HIDE_TEST_FILES_TOGGLE}
+            aria-pressed={hideTestFiles}
+            aria-label={t(hideTestFiles ? "scm.showTestFiles" : "scm.hideTestFiles")}
+            title={t(hideTestFiles ? "scm.showTestFiles" : "scm.hideTestFiles")}
+            onClick={() => setGitReviewSettings({ hideTestFiles: !hideTestFiles })}
+          >
+            <FlaskConical className="size-4" />
+          </Button>
         </div>
         <div className="relative">
           <Textarea
@@ -474,6 +531,28 @@ export function SourceControlPanel({
         sourceControl={{
           header,
           collapsedSections,
+          // 只裁剪列表投影；分组计数来自同一过滤结果，批量动作范围与显示一致。
+          changeFilter: isVisibleChange,
+          emptyState:
+            hideTestFiles && hiddenTestFileCount > 0 ? (
+              <div className="flex h-full flex-col items-center justify-center px-4 text-center">
+                <FlaskConical className="size-6 text-foreground-subtlest" />
+                <p className="mt-2 text-ui-base font-medium text-foreground">
+                  {t("scm.testFilesHiddenTitle")}
+                </p>
+                <p className="mt-1 text-ui-base text-foreground-subtle">
+                  {t("scm.testFilesHiddenDescription")}
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-3"
+                  onClick={() => setGitReviewSettings({ hideTestFiles: false })}
+                >
+                  {t("scm.showTestFiles")}
+                </Button>
+              </div>
+            ) : undefined,
           onToggleSection: (section) =>
             setCollapsedSections((previous) => {
               const next = new Set(previous);
