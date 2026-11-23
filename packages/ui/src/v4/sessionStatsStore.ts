@@ -1,5 +1,5 @@
 import { useCallback, useSyncExternalStore } from "react";
-import type { ConversationTelemetryFact } from "@zcode/shared/zcode-protocol-v4";
+import type { ConversationTelemetryInput } from "@zcode/shared/zcode-protocol-v4";
 
 /**
  * 会话统计（dsh 风格状态条）：轮 / 步 / 模型用时 / 工具调用用时 / 首 token 平均（TTFT）/
@@ -151,7 +151,7 @@ function notify(): void {
   }
 }
 
-function noteModelRequestStatus(stat: SessionStatState, fact: Extract<ConversationTelemetryFact, { kind: "model.request.status" }>): void {
+function noteModelRequestStatus(stat: SessionStatState, fact: Extract<ConversationTelemetryInput, { kind: "model.request.status" }>): void {
   if (!isStepUsageQuerySource(fact.querySource)) {
     return;
   }
@@ -238,7 +238,7 @@ function settleRound(
  * 去重口径与 ConversationTelemetryEngine.handleFact 相同（`sessionId\0eventId` 有界集合），
  * 挂接点在引擎去重之前，因此这里必须自行去重，避免同一事实在 pane 复用/重连重放时重复记账。
  */
-export function noteConversationFactForSessionStats(fact: ConversationTelemetryFact): void {
+export function noteConversationFactForSessionStats(fact: ConversationTelemetryInput): void {
   const eventKey = `${fact.sessionId}\0${fact.eventId}`;
   if (!seenFactEventIds.remember(eventKey)) {
     return;

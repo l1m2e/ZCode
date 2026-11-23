@@ -5,7 +5,6 @@ import { promisify } from "node:util";
 import { waitForControlledReplay, releaseControlledReplay } from "#e2e/helpers/controlled-replay";
 import { openStatusCapsule } from "#e2e/helpers/status-capsule";
 import {
-  TID_CHAT_SUMMARY_PANEL,
   TID_GIT_PANE,
   TID_GIT_REVIEW_COMMENT_DRAFT,
   TID_GIT_REVIEW_DIFF_STYLE_TOGGLE,
@@ -44,8 +43,6 @@ const FIXTURE_RELATIVE_PATH = `.zcode-e2e/conversation-session-git-review-entry/
 const COMPOSER_DRAFT = "E2E_REVIEW_UNSENT_COMPOSER_DRAFT";
 const COMMENT_TEXT = "E2E_REVIEW_OLD_VERSION_COMMENT";
 const execFileAsync = promisify(execFile);
-const CHANGES_LABELS = ["Changes", "更改"];
-const EXPAND_LABELS = ["Expand status", "展开状态"];
 const UNSTAGED_LABELS = ["Unstaged", "未暂存"];
 
 describe("SP13：status panel Git Changes 打开变更审阅", () => {
@@ -399,6 +396,9 @@ describe("SP13：status panel Git Changes 打开变更审阅", () => {
       );
     } finally {
       await rm(join(DEFAULT_WORKSPACE, name), { force: true });
+    }
+  });
+
   it("editor 的 276 行连续删除只占一个薄标记并保留新版评论和概览", async function () {
     this.timeout(CASE_TIMEOUT_MS);
     const name = "bulk-deletion-review.txt";
