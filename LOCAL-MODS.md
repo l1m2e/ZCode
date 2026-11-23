@@ -115,6 +115,45 @@ ditto "packages/desktop/dist/mac-arm64/ZCode Preview.app" "/Applications/ZCode P
 | `f315f8c0` | dsh 风格会话统计芯片：输入框正下方居中零高行（轮/步/TPS + Token 用量/缓存命中，悬浮面板），数据来自会话事实归账（sessionStatsStore）与 usage.cumulative |
 | `88712019` | 修复 2026-10-30 rebase 自动合并丢失的 `V4ComposerToolbar` sessionId 解构（官方新增 sessionConfigPending 依赖它） |
 
+## 2026-11-23 同步（官方 fec97590 v3.18.2 → a4b44451 v4.0.0）冲突解法记录
+
+- 官方从 v3.18.2 直接跳 v4.0.0，改 2209 个文件（+149753/-24801）。个人栈 61 个提交
+  重放，8 轮冲突 + typecheck 暴露 4 处重放损伤，适配修复集中在一个提交
+  （fix: 适配官方 v4.0.0 的重放修复）。
+- `architecture-policy.yaml` ×2：官方新增 shortcuts、workspace-plugin-trust、
+  workspace-plugin-declaration、windows-git-bash-discovery 四个 managed 模块与大量
+  unmanaged 豁免；照例官方在前、个人 git-review / code-comment / session-stats 置末。
+- `bash-prompt.ts`：官方 v4.0.0 重写 `cd` 语义行（主会话内成功执行才延续目录）；个人
+  「description 一律简体中文」行保留在前并存。`tool-contracts.test.ts` 官方重构删除了
+  工具级 description 逐字断言的旧测试，中文行断言以聚焦用例承接新家；字段级中文提示词
+  断言（properties.description.description）自动合并保留。
+- Git 审查 E2E（`conversation-session-git-review-entry.test.ts`）：官方重写 SP13 中段
+  （composer 聚焦断言 + 分支菜单交互 + 重开 review）并新增「整轮刷新」用例。合并顺序：
+  个人 split 断言（detail 态）→ 官方交互段（4→6 空格缩进放进 try）→ 衔接
+  `clickGitReviewFileRow` + `waitForGitReviewDiffContent` 恢复评论流程依赖的 diff 态。
+  两个完整用例同位插入时注意官方块的 `finally {` 需补闭合。官方已删
+  `TID_CHAT_SUMMARY_PANEL` 与旧 label 常量，失效 import/常量一并清理。
+- `ConversationTurnGroup.tsx`：**官方 v4.0.0 原生实现了「会话编辑审查展示历史全文」外壳**
+  （historyContainer / CollapsedChangeSummary / getAssistantSummaryChangeFiles 全套），
+  个人 a3f51800 只保留增量：onOpenFile 处并入 `withHistoricalDiffSource`（打开变更文件
+  带历史版本上下文，依赖 `sourceRows`，该字段个人改动已并入官方同名函数）。
+- 遥测类型：v4.0.0 把 `ModelRequestMetricsFact` 移出 wire `ConversationTelemetryFact`
+  union（走独立通知，旧 App 不解析），基类 `handleFact` 入参放宽为
+  `ConversationTelemetryInput`。个人 supervisor 覆写与 sessionStatsStore 归账签名同步
+  放宽；TPS/TTFT 数据源不受影响。
+- `ConversationTimeline.tsx`：v4.0.0 删除 status panel inline 偏移体系
+  （`summaryPanelInlineOffsetClassName`、`getConversationStatusPanelOffsetClassName`），
+  面板不再挤压消息列。个人统计条 bottomStrip 只复用 `contentWidthClassName` 即与输入框
+  同中心；presentation E2E 保留官方新几何合同（hasNormalColumnLayout）+ 个人
+  statsCenterError 断言（expectCapsuleLayout 内），旧 expectMiniPanelLayout 无宿主随官方
+  删除。
+- rebase 后 freshness 守卫会因本地与 fork 远端分叉拒绝 `--record`：按 CI 同款约定
+  `git push fork personal-mods --force-with-lease` 同步远端后重跑即可。
+- 验证：typecheck 0 错误；lint 0 错误、525 警告（较 v3.18.2 基线 526 降 1，个人改动
+  零新增）；architecture:check --changed OK（9 条全在基线，0 新增）。
+- 本地构建 `4.0.0-p26-20261123143912` 已发布更新清单；官方 /Applications/ZCode.app 在
+  源码同步前已通过内部通道升到 3.19.0（源码仓库 11-23 才放出 v4.0.0）。
+
 ## 2026-11-16 同步（官方 b95ebaf v3.18.0 → fec97590 v3.18.2）冲突解法记录
 
 - 官方 v3.18.1/v3.18.2 共改 148 个文件：新增 `memory-diagnostics` 模块（adapters/bootstrap/
